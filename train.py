@@ -105,9 +105,10 @@ brats_data = BraTSDataset(args.data_dir, dims=dims)
 trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
                         shuffle=True, num_workers=args.num_workers)
 
-model = UNet(cfg)
+#model = UNet(cfg)
+model = MonoUNet()
 device_ids = [i for i in range(torch.cuda.device_count())]
-model = nn.DataParallel(model, device_ids)
+#model = nn.DataParallel(model, device_ids)
 model = model.cuda()
 
 optimizer = \
@@ -131,37 +132,40 @@ scheduler = PolynomialLR(optimizer, args.epochs)
 loss = losses.build(args.loss)
 
 for epoch in range(start_epoch, args.epochs):
-  time_ep = time.time()
-  model.train()
-  train(model, loss, optimizer, trainloader, device)
-  
-  if (epoch + 1) % args.save_freq == 0:
-      save_checkpoint(
-          f'{args.dir}/checkpoints',
-          epoch + 1,
-          state_dict=model.state_dict(),
-          optimizer=optimizer.state_dict()
-      )
+    time_ep = time.time()
+    model.train()
 
-  if (epoch + 1) % args.eval_freq == 0:
-    # Evaluate on training data
-    train_res = validate(model, loss, trainloader, device)
-    time_ep = time.time() - time_ep
-    memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-    values = [epoch + 1, train_res['train_loss'].data] \
-          + train_res['train_dice_agg'].tolist() + train_res['train_dice'].tolist()\
-          + [ time_ep, memory_usage] 
-    table = tabulate.tabulate([values], columns, tablefmt="simple", floatfmt="8.4f")
-    print(table)
-  
-  # Log validation
-  #writer.add_scalar('Loss/train', train_loss, epoch)
-  #writer.add_scalar('Dice/train/ncr&net', train_dice[0], epoch)
-  #writer.add_scalar('Dice/train/ed', train_dice[1], epoch)
-  #writer.add_scalar('Dice/train/et', train_dice[2], epoch)
-  #writer.add_scalar('Dice/train/et_agg', train_dice_agg[0], epoch)
-  #writer.add_scalar('Dice/train/wt_agg', train_dice_agg[1], epoch)
-  #writer.add_scalar('Dice/train/tc_agg', train_dice_agg[2], epoch)
+    train(model, loss, optimizer, trainloader, device)
+    
+    if (epoch + 1) % args.save_freq == 0:
+        save_checkpoint(
+                f'{args.dir}/checkpoints',
+                epoch + 1,
+                state_dict=model.state_dict(),
+                optimizer=optimizer.state_dict()
+                )
+    
+        if (epoch + 1) % args.eval_freq == 0:
+            # Evaluate on training data
+            train_res = validate(model, loss, trainloader, device)
+            time_ep = time.time() - time_ep
+            memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
+            values = [epoch + 1, train_res['train_loss'].data] \
+              + train_res['train_dice_agg'].tolist() + \
+              train_res['train_dice'].tolist()\
+              + [ time_ep, memory_usage] 
+            table = tabulate.tabulate([values], 
+                    columns, tablefmt="simple", floatfmt="8.4f")
+            print(table)
+    
+    # Log validation
+    #writer.add_scalar('Loss/train', train_loss, epoch)
+    #writer.add_scalar('Dice/train/ncr&net', train_dice[0], epoch)
+    #writer.add_scalar('Dice/train/ed', train_dice[1], epoch)
+    #writer.add_scalar('Dice/train/et', train_dice[2], epoch)
+    #writer.add_scalar('Dice/train/et_agg', train_dice_agg[0], epoch)
+    #writer.add_scalar('Dice/train/wt_agg', train_dice_agg[1], epoch)
+    #writer.add_scalar('Dice/train/tc_agg', train_dice_agg[2], epoch)
+    
+    scheduler.step()
 
-  scheduler.step()
-  

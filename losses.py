@@ -51,16 +51,16 @@ def agg_dice_score(preds, targets):
   return dice_score(agg_preds, agg_targets)
 
 def dice_score(preds, targets):
-  # in the case where VAE regularization is used, the preds are a tuple
-  # because we also store the reconstructed image. this should be replaced
-  # with a list which would obviate the need for the conditional.
-  if isinstance(preds, tuple):
-    preds = preds[0]
-  num = 2*torch.einsum('bcijk, bcijk ->bc', [preds, targets])
-  denom = torch.einsum('bcijk, bcijk -> bc', [preds, preds]) +\
-      torch.einsum('bcijk, bcijk -> bc', [targets, targets]) + 1e-32
-  proportions = torch.div(num, denom) 
-  return torch.einsum('bc->c', proportions)
+    # in the case where VAE regularization is used, the preds are a tuple
+    # because we also store the reconstructed image. this should be replaced
+    # with a list which would obviate the need for the conditional.
+    if isinstance(preds, tuple):
+      preds = preds[0]
+    num = 2*torch.einsum('bcijk, bcijk ->bc', [preds, targets])
+    denom = torch.einsum('bcijk, bcijk -> bc', [preds, preds]) +\
+        torch.einsum('bcijk, bcijk -> bc', [targets, targets]) + 1e-32
+    proportions = torch.div(num, denom) 
+    return torch.einsum('bc->c', proportions)
 
 
 class KLLoss(nn.Module):
@@ -104,10 +104,10 @@ class DiceLoss(nn.Module):
   def __init__(self):
     super(DiceLoss, self).__init__()
 
-  def forward(self, preds_and_targets):
-    preds, targets, _ = preds_and_targets
-    num_channels = targets.size()[1]
-    return  num_channels - torch.einsum('c->', dice_score(preds, targets))
+  def forward(self, preds, targets):
+    target = targets['target']
+    num_channels = target.size()[1]
+    return  num_channels - torch.einsum('c->', dice_score(preds, target))
 
 class ReconRegLoss(nn.Module):
   def __init__(self):

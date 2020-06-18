@@ -6,8 +6,8 @@ import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
-#DEBUG=False
-DEBUG=True
+DEBUG=False
+#DEBUG=True
 
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
@@ -111,11 +111,21 @@ class BraTSDataset(Dataset):
         target = []
         if self.segs:
             seg = nib.load(self.segs[idx]).get_fdata()
-
-            # TODO: z axis cropping is still hardcoded
-            seg = seg[self.x_off:seg.shape[0]-self.x_off, 
-                self.y_off:seg.shape[1]-self.y_off, 
-                self.z_off:seg.shape[2]-self.z_off]
+            x, y, z = seg.shape
+            add_x = x % 2 
+            add_y = y % 2 
+            add_z = z % 2 
+            npad = ((0, add_x),
+                    (0, add_y),
+                    (0, add_z))
+            seg = np.pad(seg, pad_width=npad, mode='constant', constant_values=0)
+            self.x_off = (seg.shape[0] - self.dims[0]) // 2
+            self.y_off = (seg.shape[1] - self.dims[1]) // 2
+            self.z_off = (seg.shape[2] - self.dims[2]) // 2
+    
+            seg = seg[self.x_off:seg.shape[0]-self.x_off,
+              self.y_off:seg.shape[1]-self.y_off,
+              self.z_off:seg.shape[2]-self.z_off]
 
             if self.axis:
                 seg = np.flip(seg, axis)
@@ -134,10 +144,6 @@ class BraTSDataset(Dataset):
             seg_et[np.where(seg==4)] = 1
             segs.append(seg_et)
             target = torch.from_numpy(np.stack(segs))
-            #img = nib.Nifti1Image(src[0].numpy(), np.eye(4))
-            #img.to_filename(os.path.join('.', 'src.nii.gz'))
-            #img = nib.Nifti1Image(segs[2], np.eye(4))
-            #img.to_filename(os.path.join('.', 'seg.nii.gz'))
 
         if '_t1' in self.modes[0][idx] and not self.segs:
             target = self.modes[0][idx].replace('_t1', '')

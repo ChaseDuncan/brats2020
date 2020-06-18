@@ -99,8 +99,8 @@ torch.backends.cudnn.deterministic = True
 
 # TODO: move data into /dev/shm
 
-dims=[160, 192, 128]
-#dims=[128, 128, 128]
+#dims=[160, 192, 128]
+dims=[128, 128, 128]
 brats_data = BraTSDataset(args.data_dir, dims=dims)
 trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
                         shuffle=True, num_workers=args.num_workers)

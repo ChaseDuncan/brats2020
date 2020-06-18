@@ -6,6 +6,9 @@ import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
+#DEBUG=False
+DEBUG=True
+
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
         dims=[240, 240, 155], augment_data = False):
@@ -34,6 +37,9 @@ class BraTSDataset(Dataset):
         if self.augment_data:
           if a > 0.5:
             self.axis = np.random.choice([0, 1, 2], 1)[0]
+        # for debugging
+        self.src = None
+        self.target = None
 
 
     def __len__(self):
@@ -74,61 +80,68 @@ class BraTSDataset(Dataset):
         self.x_off = (img.shape[0] - self.dims[0]) // 2
         self.y_off = (img.shape[1] - self.dims[1]) // 2
         self.z_off = (img.shape[2] - self.dims[2]) // 2
-        # TODO: z axis cropping is still hardcoded
+
         img = img[self.x_off:img.shape[0]-self.x_off,
               self.y_off:img.shape[1]-self.y_off,
               self.z_off:img.shape[2]-self.z_off]
         img_trans = self.min_max_normalize(img)
         #img_trans = self.std_normalize(img)
+
         if self.augment_data:
             img_trans = self.data_aug(img_trans)
         return img_trans
 
 
     def min_max_normalize(self, d):
-      # TODO: changing data type in the function is stupid
-      d = torch.from_numpy(d)
-      d = (d - d.min()) / (d.max() - d.min())
-      return d
+        # TODO: changing data type in the function is stupid
+        d = torch.from_numpy(d)
+        d = (d - d.min()) / (d.max() - d.min())
+        return d
 
 
     def __getitem__(self, idx):
-      data = [self._transform_data(m[idx]) for m in self.modes]
-      src = torch.stack(data)
-      
-      target = []
-      if self.segs:
-        seg = nib.load(self.segs[idx]).get_fdata()
+        if DEBUG and self.src != None and self.target != None:
+            return self.src, self.target
+        elif DEBUG:
+            idx=0
 
-        # TODO: z axis cropping is still hardcoded
-        seg = seg[self.x_off:seg.shape[0]-self.x_off, 
-            self.y_off:seg.shape[1]-self.y_off, 
-        #    self.z_off:seg.shape[2]-self.z_off]
-            13:-14]
+        data = [self._transform_data(m[idx]) for m in self.modes]
+        src = torch.stack(data)
 
-        if self.axis:
-          seg = np.flip(seg, axis)
+        target = []
+        if self.segs:
+            seg = nib.load(self.segs[idx]).get_fdata()
 
-        segs = []
-        # TODO: Wrap in a loop.
-        seg_ncr_net = np.zeros(seg.shape)
-        seg_ncr_net[np.where(seg==1)] = 1
-        segs.append(seg_ncr_net)
+            # TODO: z axis cropping is still hardcoded
+            seg = seg[self.x_off:seg.shape[0]-self.x_off, 
+                self.y_off:seg.shape[1]-self.y_off, 
+                self.z_off:seg.shape[2]-self.z_off]
 
-        seg_ed = np.zeros(seg.shape)
-        seg_ed[np.where(seg==2)] = 1
-        segs.append(seg_ed)
+            if self.axis:
+                seg = np.flip(seg, axis)
 
-        seg_et = np.zeros(seg.shape)
-        seg_et[np.where(seg==4)] = 1
-        segs.append(seg_et)
-        target = torch.from_numpy(np.stack(segs))
-      #img = nib.Nifti1Image(src[0].numpy(), np.eye(4))
-      #img.to_filename(os.path.join('.', 'src.nii.gz'))
-      #img = nib.Nifti1Image(segs[2], np.eye(4))
-      #img.to_filename(os.path.join('.', 'seg.nii.gz'))
+            segs = []
+            # TODO: Wrap in a loop.
+            seg_ncr_net = np.zeros(seg.shape)
+            seg_ncr_net[np.where(seg==1)] = 1
+            segs.append(seg_ncr_net)
 
-      if '_t1' in self.modes[0][idx] and not self.segs:
-        target = self.modes[0][idx].replace('_t1', '')
+            seg_ed = np.zeros(seg.shape)
+            seg_ed[np.where(seg==2)] = 1
+            segs.append(seg_ed)
 
-      return src, target
+            seg_et = np.zeros(seg.shape)
+            seg_et[np.where(seg==4)] = 1
+            segs.append(seg_et)
+            target = torch.from_numpy(np.stack(segs))
+            #img = nib.Nifti1Image(src[0].numpy(), np.eye(4))
+            #img.to_filename(os.path.join('.', 'src.nii.gz'))
+            #img = nib.Nifti1Image(segs[2], np.eye(4))
+            #img.to_filename(os.path.join('.', 'seg.nii.gz'))
+
+        if '_t1' in self.modes[0][idx] and not self.segs:
+            target = self.modes[0][idx].replace('_t1', '')
+        if DEBUG:
+            self.src = src
+            self.target = target
+        return src, target

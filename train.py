@@ -108,7 +108,7 @@ trainloader = DataLoader(brats_data, batch_size=args.batch_size,
 #model = UNet(cfg)
 model = MonoUNet()
 device_ids = [i for i in range(torch.cuda.device_count())]
-#model = nn.DataParallel(model, device_ids)
+model = nn.DataParallel(model, device_ids)
 model = model.cuda()
 
 optimizer = \

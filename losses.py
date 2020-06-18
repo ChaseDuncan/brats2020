@@ -87,18 +87,16 @@ class VAEDiceLoss(nn.Module):
         + 0.1*F.mse_loss(output['recon'], target['src'])\
         + 0.1*self.kl(output['mu'], output['logvar'], 256)
 
-
 class AvgDiceLoss(nn.Module):
   def __init__(self):
     super(AvgDiceLoss, self).__init__()
+  # Need a loss builder so we don't have to have superfluous arguments
 
-  def forward(self, output, target):
-    proportions = dice_score(output, target['target'])
-    avg_dice = torch.einsum('c->', proportions)\
-            / torch.einsum('bcijk, bcijk->', targets, targets)
-        #/ (target['target'].shape[0]*target['target'].shape[1])
+  def forward(self, preds, targets):
+    target = targets['target']
+    proportions = dice_score(preds, target)
+    avg_dice = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
     return 1 - avg_dice
-
 
 class DiceLoss(nn.Module):
   def __init__(self):

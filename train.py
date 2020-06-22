@@ -17,6 +17,8 @@ from utils import (
     train,
     validate,
     )
+import models_min
+
 
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
@@ -107,8 +109,9 @@ trainloader = DataLoader(brats_data, batch_size=args.batch_size,
 
 #model = UNet(cfg)
 model = MonoUNet()
+#model = models_min.UNet()
 device_ids = [i for i in range(torch.cuda.device_count())]
-model = nn.DataParallel(model, device_ids)
+#model = nn.DataParallel(model, device_ids)
 model = model.cuda()
 
 optimizer = \

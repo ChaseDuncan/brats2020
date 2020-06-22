@@ -59,8 +59,8 @@ parser.add_argument('--wd', type=float, default=1e-4,
 parser.add_argument('--resume', type=str, default=None, metavar='PATH',
                         help='checkpoint to resume training from (default: None)')
 
-parser.add_argument('--epochs', type=int, default=100, metavar='N', 
-    help='number of epochs to train (default: 100)')
+parser.add_argument('--epochs', type=int, default=300, metavar='N', 
+    help='number of epochs to train (default: 300)')
 
 parser.add_argument('--num_workers', type=int, default=4, metavar='N', 
     help='number of workers to assign to dataloader (default: 4)')
@@ -72,7 +72,7 @@ parser.add_argument('--save_freq', type=int, default=25, metavar='N',
     help='save frequency (default: 25)')
 
 parser.add_argument('--eval_freq', type=int, default=5, metavar='N', 
-    help='evaluation frequency (default: 5)')
+    help='evaluation frequency (default: 25)')
 
 parser.add_argument('--lr', type=float, default=1e-4, metavar='LR', 
     help='initial learning rate (default: 1e-4)')
@@ -82,6 +82,7 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
     help='SGD momentum (default: 0.9)')
 
 args = parser.parse_args()
+
 device = torch.device('cuda')
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
@@ -110,9 +111,12 @@ trainloader = DataLoader(brats_data, batch_size=args.batch_size,
 #model = UNet(cfg)
 model = MonoUNet()
 #model = models_min.UNet()
-device_ids = [i for i in range(torch.cuda.device_count())]
+#device_ids = [i for i in range(torch.cuda.device_count())]
 #model = nn.DataParallel(model, device_ids)
-model = model.cuda()
+if args.data_par:
+    device = torch.device('cuda:1')
+    model = nn.DataParallel(model, [1, 2])
+model = model.to(device)
 
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)

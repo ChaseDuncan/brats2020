@@ -14,6 +14,12 @@ from losses import (
 import torch.utils.data.sampler as sampler
 from tqdm import tqdm
 
+def get_free_gpu():
+    os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
+    memory_available = [int(x.split()[2]) for x in open('.tmp', 'r').readlines()]
+    os.system('rm .tmp')
+    return np.argmax(memory_available)
+
 def save_checkpoint(dir, epoch, name='checkpoint', **kwargs):
     state = {
         'epoch': epoch,

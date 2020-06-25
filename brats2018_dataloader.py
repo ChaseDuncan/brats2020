@@ -38,7 +38,6 @@ class BraTS2018DataLoader3D(DataLoader):
     
     @staticmethod
     def save_segmentation_as_nifti(segmentation, metadata, output_file):
-
         original_shape = metadata['original_shape']
         print('os', metadata['original_shape'])
         seg_original_shape = np.zeros(original_shape, dtype=np.uint8)

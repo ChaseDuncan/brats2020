@@ -14,17 +14,21 @@ import random
 from utils import (
     save_checkpoint,
     load_data,
-    train,
+    train_epoch,
     validate,
     )
 import models_min
 
-
-from torch.utils.data import DataLoader
+from batchgenerators.utilities.data_splitting import get_split_deterministic
+from batchgenerators.dataloading import MultiThreadedAugmenter, SingleThreadedAugmenter
+from brats2018_dataloader import(
+        get_list_of_patients,
+        get_train_transform,
+        BraTS2018DataLoader3D
+        )
 from scheduler import PolynomialLR
 import losses
 from models import *
-from data_loader import BraTSDataset
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
 
@@ -62,7 +66,7 @@ parser.add_argument('--resume', type=str, default=None, metavar='PATH',
 parser.add_argument('--epochs', type=int, default=300, metavar='N', 
     help='number of epochs to train (default: 300)')
 
-parser.add_argument('--num_workers', type=int, default=4, metavar='N', 
+parser.add_argument('--num_threads', type=int, default=4, metavar='N', 
     help='number of workers to assign to dataloader (default: 4)')
 
 parser.add_argument('--batch_size', type=int, default=1, metavar='N', 
@@ -83,8 +87,8 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-device = torch.device('cuda')
-
+#device = torch.device('cuda')
+device = torch.device('cuda:1')
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 
@@ -92,30 +96,58 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
-torch.manual_seed(args.seed)
-torch.cuda.manual_seed(args.seed)
-np.random.seed(args.seed)
-random.seed(args.seed)
-torch.manual_seed(args.seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
+# batch_gen variables
+num_threads_for_brats_example = args.num_threads
+batches_per_epoch = 70
+brats_preprocessed_folder = args.data_dir
+patients = get_list_of_patients(brats_preprocessed_folder)
+train, val = get_split_deterministic(patients, fold=0, num_splits=5, random_state=12345)
 
-# TODO: move data into /dev/shm
+patch_size = (128, 128, 128)
+batch_size = args.batch_size
+dataloader = BraTS2018DataLoader3D(train, batch_size, patch_size, 1)
+batch = next(dataloader)
+shapes = [BraTS2018DataLoader3D.load_patient(i)[0].shape[1:] for i in patients]
+max_shape = np.max(shapes, 0)
+max_shape = np.max((max_shape, patch_size), 0)
 
-#dims=[160, 192, 128]
-dims=[128, 128, 128]
-brats_data = BraTSDataset(args.data_dir, dims=dims)
-trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
-                        shuffle=True, num_workers=args.num_workers)
+dataloader_train = BraTS2018DataLoader3D(
+        train, 
+        batch_size, 
+        max_shape, 
+        num_threads_for_brats_example
+        )
+dataloader_validation = BraTS2018DataLoader3D(
+        val, 
+        batch_size, 
+        patch_size, 
+        max(1, num_threads_for_brats_example // 2)
+        )
+
+
+tr_transforms = get_train_transform(patch_size)
+tr_gen = MultiThreadedAugmenter(dataloader_train, tr_transforms, num_processes=num_threads_for_brats_example,
+                                    num_cached_per_queue=3,
+                                    seeds=None, pin_memory=False)
+val_gen = MultiThreadedAugmenter(dataloader_validation, None,
+                                     num_processes=max(1, num_threads_for_brats_example // 2), 
+                                     num_cached_per_queue=1,
+                                     seeds=None,
+                                     pin_memory=False)
+#tr_gen = SingleThreadedAugmenter(dataloader_train, tr_transforms)
+#val_gen = SingleThreadedAugmenter(dataloader_validation, None)
 
 #model = UNet(cfg)
-model = MonoUNet()
-#model = models_min.UNet()
+#model = MonoUNet()
+
+model = models_min.UNet()
 #device_ids = [i for i in range(torch.cuda.device_count())]
 #model = nn.DataParallel(model, device_ids)
+
 if args.data_par:
     device = torch.device('cuda:1')
     model = nn.DataParallel(model, [1, 2])
+
 model = model.to(device)
 
 optimizer = \
@@ -138,11 +170,11 @@ columns = ['ep', 'loss', 'dice_tc_agg',\
 scheduler = PolynomialLR(optimizer, args.epochs)
 loss = losses.build(args.loss)
 
+print('beginning training')
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
-
-    train(model, loss, optimizer, trainloader, device)
+    train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device)
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(
@@ -154,7 +186,7 @@ for epoch in range(start_epoch, args.epochs):
     
         if (epoch + 1) % args.eval_freq == 0:
             # Evaluate on training data
-            train_res = validate(model, loss, trainloader, device)
+            train_res = validate(model, loss, val_gen, batches_per_epoch, device)
             time_ep = time.time() - time_ep
             memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
             values = [epoch + 1, train_res['train_loss'].data] \

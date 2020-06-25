@@ -18,13 +18,17 @@ model = models_min.UNet()
 
 #checkpoint = torch.load('data/models/checkpoints/checkpoint-10.pt')
 #checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-5.pt')
-checkpoint = torch.load('data/models/min/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/min/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/dp-test/checkpoints/checkpoint-5.pt')
+#checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-300.pt')
+checkpoint = torch.load('data/models/min-bg/checkpoints/checkpoint-300.pt')
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 model = model.cuda()
 
 brats_data = \
     BraTSDataset('/dev/shm/brats2018validation/', dims=[128, 128, 128])
-annotation_dir = 'annotations/min/'
+
+annotation_dir = 'annotations/min-bg/'
 os.makedirs(annotation_dir, exist_ok=True)
 dataloader = DataLoader(brats_data, batch_size=1, num_workers=0)
 dims=[128, 128, 128]

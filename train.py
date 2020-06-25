@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 import pickle
 import argparse
 import random
@@ -134,7 +134,7 @@ columns = ['ep', 'loss', 'dice_tc_agg',\
   'dice_et_agg', 'dice_ed_agg', 'dice_ncr', 'dice_et',\
   'dice_wt', 'time', 'mem_usage']
 
-writer = SummaryWriter(log_dir=f'{args.dir}/logs')
+#writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = PolynomialLR(optimizer, args.epochs)
 loss = losses.build(args.loss)
 

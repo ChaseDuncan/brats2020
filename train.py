@@ -85,11 +85,12 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
 
+parser.add_argument('--device', type=int, default=0)
+
 args = parser.parse_args()
 
-#device = torch.device('cuda')
-device = torch.device('cuda:1')
-os.makedirs(f'{args.dir}/logs', exist_ok=True)
+device = torch.device(f'cuda:{args.device}')
+#os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 
 with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
@@ -138,15 +139,15 @@ val_gen = MultiThreadedAugmenter(dataloader_validation, None,
 #val_gen = SingleThreadedAugmenter(dataloader_validation, None)
 
 #model = UNet(cfg)
-#model = MonoUNet()
+model = MonoUNet()
 
-model = models_min.UNet()
+#model = models_min.UNet()
 #device_ids = [i for i in range(torch.cuda.device_count())]
 #model = nn.DataParallel(model, device_ids)
 
-if args.data_par:
-    device = torch.device('cuda:1')
-    model = nn.DataParallel(model, [1, 2])
+#if args.data_par:
+#    device = torch.device('cuda:1')
+#    model = nn.DataParallel(model, [1, 2])
 
 model = model.to(device)
 

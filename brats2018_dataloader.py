@@ -124,17 +124,18 @@ def get_train_transform(patch_size):
     # now we mirror along all axes
     tr_transforms.append(MirrorTransform(axes=(0, 1, 2)))
 
+    # Gaussian Noise
+    #tr_transforms.append(GaussianNoiseTransform(noise_variance=(0, 0.05), p_per_sample=0.15))
+
     # brightness transform for 15% of samples
     #tr_transforms.append(BrightnessMultiplicativeTransform((0.7, 1.5), per_channel=True, p_per_sample=0.15))
 
     # gamma transform. This is a nonlinear transformation of intensity values
     # (https://en.wikipedia.org/wiki/Gamma_correction)
-    #tr_transforms.append(GammaTransform(gamma_range=(0.5, 2), invert_image=False, per_channel=True, p_per_sample=0.15))
+    tr_transforms.append(GammaTransform(gamma_range=(0.5, 2), invert_image=False, per_channel=True, p_per_sample=0.15))
     # we can also invert the image, apply the transform and then invert back
     #tr_transforms.append(GammaTransform(gamma_range=(0.5, 2), invert_image=True, per_channel=True, p_per_sample=0.15))
 
-    # Gaussian Noise
-    #tr_transforms.append(GaussianNoiseTransform(noise_variance=(0, 0.05), p_per_sample=0.15))
 
     # blurring. Some BraTS cases have very blurry modalities. This can simulate more patients with this problem and
     # thus make the model more robust to it

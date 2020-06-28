@@ -150,7 +150,7 @@ def process_segs(seg):
         seg_t.append(seg_ed)
 
         seg_et = np.zeros(patch_size)
-        seg_et[np.where(seg[b, :, :, :]==4)] = 1
+        seg_et[np.where(seg[b, :, :, :]==3)] = 1
         seg_t.append(seg_et)
         segs.append(seg_t)
     return torch.from_numpy(np.stack(segs))
@@ -161,25 +161,14 @@ def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
     for i, batch in enumerate(tr_gen):
         if i > batches_per_epoch:
             break
-        print('&&&&&&&&&&&&&&&&&&&',batch['data'][0, 1, 0, 0, 0])
-        import brats2018_dataloader
-        print(batch['data'].shape, len(batch['metadata']))
-
-        brats2018_dataloader.BraTS2018DataLoader3D.save_segmentation_as_nifti(batch['data'][0, 1, :, :, :],
-            batch['metadata'][0], 'delete_me.nii.gz')
-        #img = nib.Nifti1Image(batch['data'][0, 1, :, :, :], np.eye(4))
-        #img.to_filename('annotations/scratch/data_viz.nii.gz')
-        #img = nib.Nifti1Image(batch['seg'][0, 0, :, :, :], np.eye(4))
-        #img.to_filename('annotations/scratch/seg_viz.nii.gz')
-        1/0
         optimizer.zero_grad()
         src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
             process_segs(batch['seg']).to(device, dtype=torch.float)
         output = model(src)
 
-    cur_loss = loss(output, {'target':target, 'src':src})
-    cur_loss.backward()
-    optimizer.step()
+        cur_loss = loss(output, {'target':target, 'src':src})
+        cur_loss.backward()
+        optimizer.step()
     
 
 def _validate(model, loss, val_gen, batches_per_epoch, device,  test):
@@ -199,7 +188,7 @@ def _validate(model, loss, val_gen, batches_per_epoch, device,  test):
             total_loss += loss(output, {'target':target, 'src':src}) 
             total_dice += dice_score(output, target)
             total_dice_agg += agg_dice_score(output, target)
-
+    
     avg_dice = total_dice / total_examples
     avg_dice_agg = total_dice_agg / total_examples 
     avg_loss = total_loss / total_examples 

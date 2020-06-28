@@ -11,23 +11,33 @@ from data_loader import BraTSDataset
 import nibabel as nib
 import models_min
 
-device = torch.device('cuda:0')
-#model = MonoUNet()
-model = models_min.UNet()
+device = torch.device('cuda:2')
+model = MonoUNet()
+#model = models_min.UNet()
 
-
+model_name = 'monounet-bg'
+cp = 300
 #checkpoint = torch.load('data/models/checkpoints/checkpoint-10.pt')
 #checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-5.pt')
-checkpoint = torch.load('data/models/min/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/min/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/dp-test/checkpoints/checkpoint-5.pt')
+#checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/min-bg/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/monounet-baseline/checkpoints/checkpoint-300.pt')
+#checkpoint = torch.load('data/models/monounet-bg/checkpoints/checkpoint-300.pt')
+checkpoint = torch.load(f'data/models/{model_name}/checkpoints/checkpoint-{cp}.pt')
 model.load_state_dict(checkpoint['state_dict'], strict=False)
-model = model.cuda()
+model = model.to(device)
 
 brats_data = \
-    BraTSDataset('/dev/shm/brats2018validation/', dims=[128, 128, 128])
-annotation_dir = 'annotations/min/'
+    BraTSDataset('/dev/shm/brats2018validation/', dims=[240, 240, 155])
+    #BraTSDataset('/dev/shm/brats2018validation/', dims=[128, 128, 128])
+
+annotation_dir = f'annotations/{model_name}/2018/'
 os.makedirs(annotation_dir, exist_ok=True)
 dataloader = DataLoader(brats_data, batch_size=1, num_workers=0)
-dims=[128, 128, 128]
+#dims=[128, 128, 128]
+dims=[240, 240, 155]
 with torch.no_grad():
   model.eval()
   for src, tgt in tqdm(dataloader):
@@ -49,6 +59,5 @@ with torch.no_grad():
     label[torch.where(et > 0.5)] = 4
 
     img = nib.Nifti1Image(label.numpy(), np.eye(4))
-     
     img.to_filename(os.path.join(annotation_dir, ID))
 

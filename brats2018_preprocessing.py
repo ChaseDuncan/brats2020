@@ -40,7 +40,7 @@ def get_list_of_files(base_dir):
     return list_of_lists
 
 
-def load_and_preprocess(case, patient_name, output_folder, ground_truth=True):
+def load_and_preprocess(case, patient_name, output_folder):
     """
     loads, preprocesses and saves a case
     This is what happens here:
@@ -52,7 +52,6 @@ def load_and_preprocess(case, patient_name, output_folder, ground_truth=True):
 
     :param case:
     :param patient_name:
-    :param ground_truth: True if case includes segmentation
     :return:
     """
     # load SimpleITK Images
@@ -90,17 +89,12 @@ def load_and_preprocess(case, patient_name, output_folder, ground_truth=True):
                ]
 
     # now we create a brain mask that we use for normalization
-    if ground_truth:
-        nonzero_masks = [i != 0 for i in imgs_npy[-1]]
-    else: 
-        nonzero_masks = [i != 0 for i in imgs_npy]
+    nonzero_masks = [i != 0 for i in imgs_npy[-1]]
     brain_mask = np.zeros(imgs_npy.shape[1:], dtype=bool)
     for i in range(len(nonzero_masks)):
         brain_mask = brain_mask | nonzero_masks[i]
 
     num_modes = len(imgs_npy)
-    if ground_truth:
-        num_modes-=1
     # now normalize each modality with its mean and standard deviation (computed within the brain mask)
     for i in range(num_modes):
         mean = imgs_npy[i][brain_mask].mean()
@@ -110,8 +104,7 @@ def load_and_preprocess(case, patient_name, output_folder, ground_truth=True):
 
     # the segmentation of brats has the values 0, 1, 2 and 4. This is pretty inconvenient to say the least.
     # We move everything that is 4 to 3
-    if ground_truth:
-        imgs_npy[-1][imgs_npy[-1] == 4] = 3
+    imgs_npy[-1][imgs_npy[-1] == 4] = 3
 
     # now save as npz
     np.save(join(output_folder, patient_name + ".npy"), imgs_npy)
@@ -121,7 +114,7 @@ def load_and_preprocess(case, patient_name, output_folder, ground_truth=True):
         'direction': direction,
         'origin': origin,
         'original_shape': original_shape,
-        'nonzero_region': nonzero
+        'nonzero_region': nonzero,
     }
 
     save_pickle(metadata, join(output_folder, patient_name + ".pkl"))

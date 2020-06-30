@@ -112,28 +112,6 @@ def load_data(dataset):
   cv_trainloader, cv_testloader = cross_validation(dataset)
   return cv_trainloader[0], cv_testloader[0]
 
-
-# TODO: currently only using one fold. Either use this or get rid of it.
-def cross_validation(dataset, batch_size=1, k = 5):
-  num_examples = len(dataset)
-  data_indices = np.arange(num_examples)
-  np.random.shuffle(data_indices)
-  folds = np.array(np.split(data_indices, k))
-
-  cv_trainloader = []
-  cv_testloader = []
-
-  for i in range(len(folds)):
-    mask = np.zeros(len(folds), dtype=bool)
-    mask[i] = True
-    train_folds = np.hstack(folds[~mask])
-    test_fold = folds[mask][0]
-    cv_trainloader.append(DataLoader(dataset,
-      batch_size, num_workers=0, sampler=sampler.SubsetRandomSampler(train_folds)))
-    cv_testloader.append(DataLoader(dataset,
-      batch_size, num_workers=0, sampler=sampler.SubsetRandomSampler(test_fold)))
-    return cv_trainloader, cv_testloader
-
 def process_segs(seg):
     # iterate over each example in the batch
     segs = []
@@ -142,18 +120,18 @@ def process_segs(seg):
     for b in range(seg.shape[0]):
         seg_t = []
         seg_ncr_net = np.zeros(patch_size)
-        seg_ncr_net[np.where(seg[b, :, :, :] ==1)] = 1
+        seg_ncr_net[np.where(seg[b, :, :, :] == 1)] = 1
         seg_t.append(seg_ncr_net)
 
         seg_ed = np.zeros(patch_size)
-        seg_ed[np.where(seg[b, :, :, :]==2)] = 1
+        seg_ed[np.where(seg[b, :, :, :] == 2)] = 1
         seg_t.append(seg_ed)
 
         seg_et = np.zeros(patch_size)
-        seg_et[np.where(seg[b, :, :, :]==3)] = 1
+        seg_et[np.where(seg[b, :, :, :] == 3)] = 1
         seg_t.append(seg_et)
         segs.append(seg_t)
-    return torch.from_numpy(np.stack(segs))
+    return torch.from_numpy(np.array(segs))
 
 def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
     model.train()

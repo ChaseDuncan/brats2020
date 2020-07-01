@@ -1,12 +1,13 @@
 from time import time
 import SimpleITK as sitk
+import numpy as np
+
 from batchgenerators.augmentations.crop_and_pad_augmentations import crop
 from batchgenerators.dataloading import MultiThreadedAugmenter, SingleThreadedAugmenter
 #from batchgenerators.examples.brats2018.config import brats_preprocessed_folder, num_threads_for_brats_example
 from batchgenerators.transforms import Compose
 from batchgenerators.utilities.data_splitting import get_split_deterministic
 from batchgenerators.utilities.file_and_folder_operations import *
-import numpy as np
 from batchgenerators.dataloading.data_loader import DataLoader
 from batchgenerators.augmentations.utils import pad_nd_image
 from batchgenerators.transforms.spatial_transforms import SpatialTransform_2, MirrorTransform
@@ -30,8 +31,8 @@ class BraTS2018DataLoader3D(DataLoader):
         patch_size is the spatial size the retured batch will have
 
         """
-        super().__init__(data, batch_size, num_threads_in_multithreaded, seed_for_shuffle, return_incomplete, shuffle,
-                         infinite)
+        super().__init__(data, batch_size, num_threads_in_multithreaded, seed_for_shuffle, 
+                return_incomplete, shuffle, infinite)
         self.patch_size = patch_size
         self.num_modalities = 4
         self.indices = list(range(len(data)))
@@ -39,18 +40,18 @@ class BraTS2018DataLoader3D(DataLoader):
     @staticmethod
     def save_segmentation_as_nifti(segmentation, metadata, output_file):
         original_shape = metadata['original_shape']
-        print('os', metadata['original_shape'])
         seg_original_shape = np.zeros(original_shape, dtype=np.uint8)
-        nonzero = metadata['nonzero_region']
-        print('nonzero', nonzero)
+        nonzero = np.squeeze(metadata['nonzero_region'])
         seg_original_shape[nonzero[0, 0] : nonzero[0, 1] + 1,
                    nonzero[1, 0]: nonzero[1, 1] + 1,
                    nonzero[2, 0]: nonzero[2, 1] + 1] = segmentation
         sitk_image = sitk.GetImageFromArray(seg_original_shape)
-        sitk_image.SetDirection(metadata['direction'])
-        sitk_image.SetOrigin(metadata['origin'])
+        sitk_image.SetDirection(np.squeeze(metadata['direction']))
+        sitk_image.SetOrigin(np.squeeze(metadata['origin']))
+        # TODO: this was causing me problems. I think it's not necessary for BraTS but
+        # we must be careful...
         # remember to revert spacing back to sitk order again
-        sitk_image.SetSpacing(tuple(metadata['spacing'][[2, 1, 0]]))
+        #sitk_image.SetSpacing(tuple(np.squeeze(metadata['spacing'].numpy().astype('uint8'))[[2, 1, 0]]))
         sitk.WriteImage(sitk_image, output_file)
 
 
@@ -75,17 +76,19 @@ class BraTS2018DataLoader3D(DataLoader):
         # iterate over patients_for_batch and include them in the batch
         for i, j in enumerate(patients_for_batch):
             patient_data, patient_metadata = self.load_patient(j)
-
             # this will only pad patient_data if its shape is smaller than self.patch_size
             patient_data = pad_nd_image(patient_data, self.patch_size)
 
             # now random crop to self.patch_size
             # crop expects the data to be (b, c, x, y, z) but patient_data is (c, x, y, z) so we need to add one
             # dummy dimension in order for it to work (@Todo, could be improved)
-            patient_data, patient_seg = crop(patient_data[:-1][None], patient_data[-1:][None], self.patch_size, crop_type="random")
-
-            data[i] = patient_data[0]
+            patient_data, patient_seg = crop(patient_data[:-1][None], 
+                patient_data[-1:][None], 
+                self.patch_size, 
+                crop_type="random")
+            
             seg[i] = patient_seg[0]
+            data[i] = patient_data[0]
 
             metadata.append(patient_metadata)
             patient_names.append(j)
@@ -94,15 +97,17 @@ class BraTS2018DataLoader3D(DataLoader):
 
 
 def get_train_transform(patch_size):
-    # we now create a list of transforms. These are not necessarily the best transforms to use for BraTS, this is just
-    # to showcase some things
+    # we now create a list of transforms. These are not necessarily the best transforms to use for BraTS, 
+    # this is just to showcase some things
     tr_transforms = []
 
-    # the first thing we want to run is the SpatialTransform. It reduces the size of our data to patch_size and thus
-    # also reduces the computational cost of all subsequent operations. All subsequent operations do not modify the
-    # shape and do not transform spatially, so no border artifacts will be introduced
+    # the first thing we want to run is the SpatialTransform. 
+    # It reduces the size of our data to patch_size and thus
+    # also reduces the computational cost of all subsequent operations. All subsequent operations 
+    # do not modify the shape and do not transform spatially, so no border artifacts will be introduced
     # Here we use the new SpatialTransform_2 which uses a new way of parameterizing elastic_deform
-    # We use all spatial transformations with a probability of 0.2 per sample. This means that 1 - (1 - 0.1) ** 3 = 27%
+    # We use all spatial transformations with a probability of 0.2 per sample. 
+    # This means that 1 - (1 - 0.1) ** 3 = 27%
     # of samples will be augmented, the rest will just be cropped
     tr_transforms.append(
         SpatialTransform_2(
@@ -125,14 +130,19 @@ def get_train_transform(patch_size):
     tr_transforms.append(MirrorTransform(axes=(0, 1, 2)))
 
     # Gaussian Noise
-    #tr_transforms.append(GaussianNoiseTransform(noise_variance=(0, 0.05), p_per_sample=0.15))
+    tr_transforms.append(
+            GaussianNoiseTransform(
+                noise_variance=(0, 0.05), p_per_sample=0.15))
 
     # brightness transform for 15% of samples
-    #tr_transforms.append(BrightnessMultiplicativeTransform((0.7, 1.5), per_channel=True, p_per_sample=0.15))
+    tr_transforms.append(
+            BrightnessMultiplicativeTransform(
+                (0.7, 1.5), per_channel=True, p_per_sample=0.15))
 
     # gamma transform. This is a nonlinear transformation of intensity values
     # (https://en.wikipedia.org/wiki/Gamma_correction)
-    tr_transforms.append(GammaTransform(gamma_range=(0.5, 2), invert_image=False, per_channel=True, p_per_sample=0.15))
+    #tr_transforms.append(GammaTransform(gamma_range=(0.5, 2), invert_image=False, 
+    #    per_channel=True, p_per_sample=0.15))
     # we can also invert the image, apply the transform and then invert back
     #tr_transforms.append(GammaTransform(gamma_range=(0.5, 2), invert_image=True, per_channel=True, p_per_sample=0.15))
 
@@ -148,7 +158,7 @@ def get_train_transform(patch_size):
 
 
 if __name__ == "__main__":
-    brats_preprocessed_folder = '/dev/shm/brats2018preprocessed/'
+    brats_preprocessed_folder = '/dev/shm/brats2018-validation-preprocessed/'
     num_threads_for_brats_example = 1
 
     patients = get_list_of_patients(brats_preprocessed_folder)
@@ -179,19 +189,27 @@ if __name__ == "__main__":
     max_shape = np.max(shapes, 0)
     max_shape = np.max((max_shape, patch_size), 0)
 
-    # we create a new instance of DataLoader. This one will return batches of shape max_shape. Cropping/padding is
-    # now done by SpatialTransform. If we do it this way we avoid border artifacts (the entire brain of all cases will
+    # we create a new instance of DataLoader. This one will return batches of shape max_shape. 
+    # Cropping/padding is now done by SpatialTransform. If we do it this way we avoid border artifacts 
+    # (the entire brain of all cases will
     # be in the batch and SpatialTransform will use zeros which is exactly what we have outside the brain)
-    # this is viable here but not viable if you work with different data. If you work for example with CT scans that
-    # can be up to 500x500x500 voxels large then you should do this differently. There, instead of using max_shape you
-    # should estimate what shape you need to extract so that subsequent SpatialTransform does not introduce border
-    # artifacts
+    # this is viable here but not viable if you work with different data. 
+    # If you work for example with CT scans that
+    # can be up to 500x500x500 voxels large then you should do this differently. 
+    # There, instead of using max_shape you
+    # should estimate what shape you need to extract so that subsequent SpatialTransform 
+    # does not introduce border artifacts
     dataloader_train = BraTS2018DataLoader3D(train, batch_size, max_shape, num_threads_for_brats_example)
 
-    # during training I like to run a validation from time to time to see where I am standing. This is not a correct
-    # validation because just like training this is patch-based but it's good enough. We don't do augmentation for the
+    # during training I like to run a validation from time to time to see where I am standing. 
+    # This is not a correct
+    # validation because just like training this is patch-based but it's good enough. 
+    # We don't do augmentation for the
     # validation, so patch_size is used as shape target here
-    dataloader_validation = BraTS2018DataLoader3D(val, batch_size, patch_size, max(1, num_threads_for_brats_example // 2))
+    dataloader_validation = BraTS2018DataLoader3D(val, 
+            batch_size, 
+            patch_size, 
+            max(1, num_threads_for_brats_example // 2))
 
     tr_transforms = get_train_transform(patch_size)
 

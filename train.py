@@ -102,8 +102,8 @@ num_threads_for_brats_example = args.num_threads
 batches_per_epoch = 70
 brats_preprocessed_folder = args.data_dir
 patients = get_list_of_patients(brats_preprocessed_folder)
-train, val = get_split_deterministic(patients, fold=0, num_splits=5, random_state=12345)
-
+#train, val = get_split_deterministic(patients, fold=0, num_splits=5, random_state=12345)
+train = patients
 patch_size = (128, 128, 128)
 batch_size = args.batch_size
 dataloader = BraTS2018DataLoader3D(train, batch_size, patch_size, 1)
@@ -119,7 +119,7 @@ dataloader_train = BraTS2018DataLoader3D(
         num_threads_for_brats_example
         )
 dataloader_validation = BraTS2018DataLoader3D(
-        val, 
+        train, 
         batch_size, 
         patch_size, 
         max(1, num_threads_for_brats_example // 2)

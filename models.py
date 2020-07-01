@@ -236,6 +236,7 @@ class Decoder(nn.Module):
         self.sig = nn.Sigmoid()
 
     def forward(self, x):
+        #print([v.size() for k, v in x.items()])
         sp3 = x['spatial_level_3'] + self.up(self.cf1(x['spatial_level_4']))
         sp3 = self.block9(sp3)
         sp3 = self.block10(sp3)

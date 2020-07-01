@@ -1,12 +1,13 @@
 from time import time
 import SimpleITK as sitk
+import numpy as np
+
 from batchgenerators.augmentations.crop_and_pad_augmentations import crop
 from batchgenerators.dataloading import MultiThreadedAugmenter, SingleThreadedAugmenter
 #from batchgenerators.examples.brats2018.config import brats_preprocessed_folder, num_threads_for_brats_example
 from batchgenerators.transforms import Compose
 from batchgenerators.utilities.data_splitting import get_split_deterministic
 from batchgenerators.utilities.file_and_folder_operations import *
-import numpy as np
 from batchgenerators.dataloading.data_loader import DataLoader
 from batchgenerators.augmentations.utils import pad_nd_image
 from batchgenerators.transforms.spatial_transforms import SpatialTransform_2, MirrorTransform

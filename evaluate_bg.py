@@ -17,7 +17,7 @@ device = torch.device('cuda:0')
 model = MonoUNet()
 #model = models_min.UNet()
 
-model_name = 'monounet-bg'
+model_name = 'monounet-gaussian'
 cp = 300
 #checkpoint = torch.load('data/models/checkpoints/checkpoint-10.pt')
 #checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-5.pt')
@@ -31,11 +31,13 @@ checkpoint = torch.load(f'data/models/{model_name}/checkpoints/checkpoint-{cp}.p
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 model = model.to(device)
 val = BraTSValidation('/dev/shm/brats2018-validation-preprocessed')
+#val = BraTSValidation('/dev/shm/brats2018-preprocessed')
 dataloader = DataLoader(val, batch_size=1, num_workers=0)
 annotation_dir = f'annotations/{model_name}/2018/'
 os.makedirs(annotation_dir, exist_ok=True)
 
-thresh = 0.25
+
+thresh = 0.50
 with torch.no_grad():
     model.eval()
     for data, metadata in tqdm(dataloader):
@@ -43,21 +45,29 @@ with torch.no_grad():
         # There are 4 spatial levels, i.e. 3 times in which the dimensionality of the 
         # input is halved. In order for the skip connections from the encoder to decoder
         # to work, the input must be divisible by 8. 
-        new_shape = orig_shape + (8*np.ones(3)-(orig_shape % 8))
+        diff=(8*np.ones(3)-(orig_shape % 8)).astype('int')
+        new_shape = orig_shape + diff
 
         # This is silly going back and forth from torch tensor to numpy array
+        # I don't really even need this general function here. I think I can
+        # simplify this using pytorch lib.
+        
         data = pad_nd_image(data, new_shape.astype('int'))
 
         output = model(torch.from_numpy(data).to(device)).squeeze()
         output = output.cpu().numpy()
-
-        seg = np.zeros(output.shape)
-        import pdb; pdb.set_trace()
-        seg[np.where(output > thresh)] = 1
-        seg = np.einsum('cijk->ijk', seg)
-        seg[np.where(seg == 3)] = 4
-        img = np.zeros(orig_shape)
-        img[:, :, :] = seg[:orig_shape[0], :orig_shape[1], :orig_shape[2]]
+        output = output[:, :orig_shape[0], :orig_shape[1], :orig_shape[2]]
+        seg = np.zeros(orig_shape)
+        ncr_net = output[0, :, :, :]
+        ed = output[1, :, :, :]
+        et = output[2, :, :, :]
+    
+        label = np.zeros((orig_shape[0], orig_shape[1], orig_shape[2]))
+        label[np.where(ncr_net > thresh)] = 1
+        label[np.where(ed > thresh)] = 2
+        label[np.where(et > thresh)] = 4
+        
+        
         output_file = os.path.join(annotation_dir, f'{metadata["patient_id"][0]}.nii.gz')
-        BraTS2018DataLoader3D.save_segmentation_as_nifti(img, metadata, output_file)
+        BraTS2018DataLoader3D.save_segmentation_as_nifti(label, metadata, output_file)
 

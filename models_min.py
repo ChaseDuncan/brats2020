@@ -1,6 +1,12 @@
 import torch
 import torch.nn as nn
 
+
+'''
+This was created for the purpose of debugging. Has some simplifications.
+Namely, no residual connections from the encoder to the decoder. There
+are possibly others that I forgot but this shouldn't be used for training.
+'''
 class ResNetBlock(nn.Module):
   def __init__(self, channels):
     super(ResNetBlock, self).__init__()

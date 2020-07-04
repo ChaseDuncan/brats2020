@@ -43,6 +43,7 @@ parser.add_argument('--data_dir', type=str, required=True, metavar='PATH TO DATA
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
                         help='model name (default: None)')
 
+parser.add_argument('--device', type=int, required=True, metavar='n')
 parser.add_argument('--upsampling', type=str, default='bilinear', 
     choices=['bilinear', 'deconv'], 
     help='upsampling algorithm to use in decoder (default: bilinear)')
@@ -53,6 +54,9 @@ parser.add_argument('--loss', type=str, default='avgdice',
 
 parser.add_argument('--data_par', action='store_true', 
     help='data parellelism flag (default: off)')
+
+parser.add_argument('--no_dropout', action='store_true', 
+    help='do not train with dropout (default: train with dropout)')
 
 parser.add_argument('--seed', type=int, default=1, metavar='S', 
     help='random seed (default: 1)')
@@ -85,7 +89,6 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
 
-parser.add_argument('--device', type=int, default=0)
 
 args = parser.parse_args()
 
@@ -139,7 +142,10 @@ val_gen = MultiThreadedAugmenter(dataloader_validation, None,
 #val_gen = SingleThreadedAugmenter(dataloader_validation, None)
 
 #model = UNet(cfg)
-model = MonoUNet()
+if args.no_dropout:
+    model = MonoUNet(dropout=False)
+else:
+    model = MonoUNet()
 
 #model = models_min.UNet()
 #device_ids = [i for i in range(torch.cuda.device_count())]
@@ -185,18 +191,18 @@ for epoch in range(start_epoch, args.epochs):
                 optimizer=optimizer.state_dict()
                 )
     
-        if (epoch + 1) % args.eval_freq == 0:
-            # Evaluate on training data
-            train_res = validate(model, loss, val_gen, batches_per_epoch, device)
-            time_ep = time.time() - time_ep
-            memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-            values = [epoch + 1, train_res['train_loss'].data] \
-              + train_res['train_dice_agg'].tolist() + \
-              train_res['train_dice'].tolist()\
-              + [ time_ep, memory_usage] 
-            table = tabulate.tabulate([values], 
-                    columns, tablefmt="simple", floatfmt="8.4f")
-            print(table)
+    if (epoch + 1) % args.eval_freq == 0:
+        # Evaluate on training data
+        train_res = validate(model, loss, val_gen, batches_per_epoch, device)
+        time_ep = time.time() - time_ep
+        memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
+        values = [epoch + 1, train_res['train_loss'].data] \
+          + train_res['train_dice_agg'].tolist() + \
+          train_res['train_dice'].tolist()\
+          + [ time_ep, memory_usage] 
+        table = tabulate.tabulate([values], 
+                columns, tablefmt="simple", floatfmt="8.4f")
+        print(table)
     
     # Log validation
     #writer.add_scalar('Loss/train', train_loss, epoch)

@@ -48,17 +48,20 @@ class ResNetBlock(nn.Module):
             out += residual
         return out
 
-class DownSampling(nn.Module):
+# I don't love the next two classes. They're just thin wrappers over nn.Con3d.
+class Downsample(nn.Module):
     # downsample by 2; simultaneously increase feature size by 2
     def __init__(self, in_channels):
-        super(DownSampling, self).__init__()
+        super(Downsample, self).__init__()
         self.conv3x3x3 = nn.Conv3d(in_channels, 2*in_channels, 
             kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):
         return self.conv3x3x3(x)
 
-# TODO: get rid of this
+
+# TODO: maybe get rid of this? it's just thin wrapper around a
+# convolutional layer.
 class CompressFeatures(nn.Module):
     # Reduce the number of features by a factor of 2.
     # Assumes channels_in is power of 2.
@@ -70,6 +73,7 @@ class CompressFeatures(nn.Module):
     def forward(self, x):
         return self.conv1x1x1(x)
 
+# TODO: I don't see the use in this thin wrapper over ConvTranspose3d.
 class UpsamplingDeconv3d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=4):
         super(UpsamplingDeconv3d, self).__init__()
@@ -87,111 +91,22 @@ class UpsamplingDeconv3d(nn.Module):
         def forward(self, x):
             return self.deconv(x)
 
-cfg = {
-    'encoder': (4, 8, [
-        32,
-        "DS",
-        64,
-        64,
-        "DS",
-        128,
-        128,
-        "DS",
-        256,
-        256,
-        256,
-        256]
-        ),
-    'decoder': (256, 8, [
-        "UP",
-        "CF-128",
-        128,
-        128,
-        "UP",
-        "CF-64",
-        64,
-        64,
-        "UP",
-        "CF-32",
-        32,
-        32,
-        "CF-3"]
-        )
-    }
-
-def build_architecture(cfg, arc_type):
-    in_channels, num_groups, architecture = cfg
-    layers = nn.ModuleList()
-    temp_layer = list()
-    for layer in architecture:
-        if layer == "DS":
-            layers.append(nn.Sequential(*temp_layer))
-            temp_layer = list()
-            temp_layer += [DownSampling(in_channels)]
-            in_channels*=2
-        elif layer == "UP":
-            temp_layer+=[UpsamplingBilinear3d()]
-        elif "CF" in str(layer):
-            _, out_channels = layer.split('-')
-            out_channels = int(out_channels)
-            temp_layer+=[CompressFeatures(in_channels, 
-                out_channels)]
-            in_channels = out_channels
-            layers.append(nn.Sequential(*temp_layer))
-            temp_layer = list()
-        elif type(layer) == int:
-            if temp_layer or arc_type=='decoder':
-                temp_layer += [ResNetBlock(in_channels, layer, num_groups=num_groups)]
-            else:
-                # The first layer of the encoder does not use group norm and simply
-                # expands the channel size.
-                temp_layer += [ResNetBlock(in_channels, layer)]
-            in_channels = layer
-        else:
-            raise ValueError(f'"{layer}" is not a valid layer specification.')
-    if arc_type == 'decoder':
-        temp_layer+=[nn.Sigmoid()]
-    layers.append(nn.Sequential(*temp_layer))
-    return layers
-
-def build_net(cfg):
-    return build_architecture(cfg['encoder'], 'encoder'),\
-            build_architecture(cfg['decoder'], 'decoder')
-
-class UNet(nn.Module):
-    def __init__(self, cfg):
-        super(UNet, self).__init__()
-        self.encoder, self.decoder = build_net(cfg)
-
-    def forward(self, x):
-        residuals = []
-        for layer in self.encoder:
-            x = layer(x)
-            residuals.append(x)
-        # TODO: don't do this; reverse list
-        spatial_lvl = -2
-        for layer in self.decoder:
-            x = layer(x)
-            if abs(spatial_lvl) <= len(residuals):
-                x = x + residuals[spatial_lvl]
-            spatial_lvl-=1
-        return x
-
 
 class Encoder(nn.Module):
-    def __init__(self, input_channels=4):
+    def __init__(self, dropout, input_channels=4):
         super(Encoder, self).__init__()
+        self.dropout = dropout
         self.sig = nn.Sigmoid()
         self.initLayer = nn.Conv3d(input_channels, 32, 
                 kernel_size=3, stride=1, padding=1)
         self.block0 = SimpleResNetBlock(32)
-        self.ds1 = DownSampling(32)
+        self.ds1 = Downsample(32)
         self.block1 = SimpleResNetBlock(64)
         self.block2 = SimpleResNetBlock(64) 
-        self.ds2 = DownSampling(64)
+        self.ds2 = Downsample(64)
         self.block3 = SimpleResNetBlock(128) 
         self.block4 = SimpleResNetBlock(128) 
-        self.ds3 = DownSampling(128)
+        self.ds3 = Downsample(128)
         self.block5 = SimpleResNetBlock(256) 
         self.block6 = SimpleResNetBlock(256) 
         self.block7 = SimpleResNetBlock(256) 
@@ -202,7 +117,7 @@ class Encoder(nn.Module):
         sp0 = self.initLayer(x)
         sp1 = self.block0(sp0)
         sp2 = self.ds1(sp1)
-        sp2 = self.block1(sp2) 
+        sp2 = self.block1(sp2)
         sp2 = self.block2(sp2)
         sp3 = self.ds2(sp2)
         sp3 = self.block3(sp3)
@@ -212,6 +127,7 @@ class Encoder(nn.Module):
         sp4 = self.block6(sp4)
         sp4 = self.block7(sp4)
         sp4 = self.block8(sp4)
+
         return {
                 'spatial_level_4':sp4, 'spatial_level_3':sp3, 
                 'spatial_level_2':sp2, 'spatial_level_1':sp1
@@ -219,8 +135,9 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, output_channels=3):
+    def __init__(self, dropout, output_channels=3):
         super(Decoder, self).__init__()
+        self.dropout = dropout
         self.cf1 = CompressFeatures(256, 128)
         self.block9 = SimpleResNetBlock(128) 
         self.block10 = SimpleResNetBlock(128) 
@@ -236,7 +153,6 @@ class Decoder(nn.Module):
         self.sig = nn.Sigmoid()
 
     def forward(self, x):
-        #print([v.size() for k, v in x.items()])
         sp3 = x['spatial_level_3'] + self.up(self.cf1(x['spatial_level_4']))
         sp3 = self.block9(sp3)
         sp3 = self.block10(sp3)
@@ -247,14 +163,15 @@ class Decoder(nn.Module):
         sp1 = self.block13(sp1)
         sp1 = self.block14(sp1)
         output = self.sig(self.cf_final(sp1))
+
         return output
      
 
 class MonoUNet(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout=True):
         super(MonoUNet, self).__init__()
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+        self.encoder = Encoder(dropout)
+        self.decoder = Decoder(dropout)
 
     def forward(self, x):
         x = self.encoder(x)

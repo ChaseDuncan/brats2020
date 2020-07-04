@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
+import argparse
 
 from torch.utils.data import DataLoader
 from data_loader import BraTSValidation
@@ -13,31 +14,36 @@ import models_min
 
 from batchgenerators.dataloading import MultiThreadedAugmenter, SingleThreadedAugmenter
 from brats2018_dataloader import BraTS2018DataLoader3D, get_list_of_patients
+
+parser = argparse.ArgumentParser(description='Annotate BraTS data from a given year.')
 device = torch.device('cuda:0')
 model = MonoUNet()
 #model = models_min.UNet()
+parser.add_argument('--model', type=str, required=True, metavar='NAME',
+    help='Name of model to use for annotation.')
 
-model_name = 'monounet-gaussian'
-cp = 300
-#checkpoint = torch.load('data/models/checkpoints/checkpoint-10.pt')
-#checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-5.pt')
-#checkpoint = torch.load('data/models/min/checkpoints/checkpoint-300.pt')
-#checkpoint = torch.load('data/models/dp-test/checkpoints/checkpoint-5.pt')
-#checkpoint = torch.load('data/models/monounet/checkpoints/checkpoint-300.pt')
-#checkpoint = torch.load('data/models/min-bg/checkpoints/checkpoint-300.pt')
-#checkpoint = torch.load('data/models/monounet-baseline/checkpoints/checkpoint-300.pt')
-#checkpoint = torch.load('data/models/monounet-bg/checkpoints/checkpoint-300.pt')
-checkpoint = torch.load(f'data/models/{model_name}/checkpoints/checkpoint-{cp}.pt')
+parser.add_argument('--cp', type=int, required=True, metavar='N',
+    help='Checkpoint to use for annotation.')
+
+parser.add_argument('--year', type=int, required=True, metavar='N',
+    help='Year of BraTS data to label.')
+
+parser.add_argument('--thresh', type=float, default='0.5',
+        help='The threshold for determining if a voxel should be labeled. (default: 0.5)')
+
+args = parser.parse_args()
+
+checkpoint =\
+        torch.load(f'data/models/{args.model}/checkpoints/checkpoint-{args.cp}.pt')
+
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 model = model.to(device)
-val = BraTSValidation('/dev/shm/brats2018-validation-preprocessed')
-#val = BraTSValidation('/dev/shm/brats2018-preprocessed')
+
+val = BraTSValidation(f'/dev/shm/brats{args.year}-validation-preprocessed')
 dataloader = DataLoader(val, batch_size=1, num_workers=0)
-annotation_dir = f'annotations/{model_name}/2018/'
+annotation_dir = f'annotations/{args.model}/{args.year}/'
 os.makedirs(annotation_dir, exist_ok=True)
 
-
-thresh = 0.50
 with torch.no_grad():
     model.eval()
     for data, metadata in tqdm(dataloader):
@@ -63,9 +69,9 @@ with torch.no_grad():
         et = output[2, :, :, :]
     
         label = np.zeros((orig_shape[0], orig_shape[1], orig_shape[2]))
-        label[np.where(ncr_net > thresh)] = 1
-        label[np.where(ed > thresh)] = 2
-        label[np.where(et > thresh)] = 4
+        label[np.where(ncr_net > args.thresh)] = 1
+        label[np.where(ed > args.thresh)] = 2
+        label[np.where(et > args.thresh)] = 4
         
         
         output_file = os.path.join(annotation_dir, f'{metadata["patient_id"][0]}.nii.gz')

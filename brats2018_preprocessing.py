@@ -61,6 +61,8 @@ def load_and_preprocess(case, patient_name, output_folder):
     imgs_npy = [sitk.GetArrayFromImage(i) for i in imgs_sitk]
 
     # get some metadata
+    # This is the distance between voxels for each dimension. It doesn't matter for BraTS. Maybe I should just
+    # remove it to prevent future confusion? 
     spacing = imgs_sitk[0].GetSpacing()
     # the spacing returned by SimpleITK is in inverse order relative to the numpy array we receive. If we wanted to
     # resample the data and if the spacing was not isotropic (in BraTS all cases have already been resampled to 1x1x1mm

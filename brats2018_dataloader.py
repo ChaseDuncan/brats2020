@@ -109,20 +109,34 @@ def get_train_transform(patch_size):
     # We use all spatial transformations with a probability of 0.2 per sample. 
     # This means that 1 - (1 - 0.1) ** 3 = 27%
     # of samples will be augmented, the rest will just be cropped
+    #tr_transforms.append(
+    #    SpatialTransform_2(
+    #        patch_size, [i // 2 for i in patch_size],
+    #        do_elastic_deform=True, deformation_scale=(0, 0.25),
+    #        do_rotation=True,
+    #        angle_x=(- 15 / 360. * 2 * np.pi, 15 / 360. * 2 * np.pi),
+    #        angle_y=(- 15 / 360. * 2 * np.pi, 15 / 360. * 2 * np.pi),
+    #        angle_z=(- 15 / 360. * 2 * np.pi, 15 / 360. * 2 * np.pi),
+    #        do_scale=True, scale=(0.75, 1.25),
+    #        border_mode_data='constant', border_cval_data=0,
+    #        border_mode_seg='constant', border_cval_seg=0,
+    #        order_seg=1, order_data=3,
+    #        random_crop=True,
+    #        p_el_per_sample=0.1, p_rot_per_sample=0.1, p_scale_per_sample=0.1
+    #    )
+    #)
+
     tr_transforms.append(
         SpatialTransform_2(
             patch_size, [i // 2 for i in patch_size],
-            do_elastic_deform=True, deformation_scale=(0, 0.25),
-            do_rotation=True,
-            angle_x=(- 15 / 360. * 2 * np.pi, 15 / 360. * 2 * np.pi),
-            angle_y=(- 15 / 360. * 2 * np.pi, 15 / 360. * 2 * np.pi),
-            angle_z=(- 15 / 360. * 2 * np.pi, 15 / 360. * 2 * np.pi),
-            do_scale=True, scale=(0.75, 1.25),
+            do_elastic_deform=False,
+            do_rotation=False,
+            do_scale=True, scale=(0.9, 1.1),
             border_mode_data='constant', border_cval_data=0,
             border_mode_seg='constant', border_cval_seg=0,
             order_seg=1, order_data=3,
             random_crop=True,
-            p_el_per_sample=0.1, p_rot_per_sample=0.1, p_scale_per_sample=0.1
+            p_el_per_sample=0.0, p_rot_per_sample=0.0, p_scale_per_sample=0.1
         )
     )
 
@@ -132,12 +146,12 @@ def get_train_transform(patch_size):
     # Gaussian Noise
     tr_transforms.append(
             GaussianNoiseTransform(
-                noise_variance=(0, 0.05), p_per_sample=0.15))
+                noise_variance=(0.0, 0.1), p_per_sample=0.15))
 
     # brightness transform for 15% of samples
-    tr_transforms.append(
-            BrightnessMultiplicativeTransform(
-                (0.7, 1.5), per_channel=True, p_per_sample=0.15))
+    #tr_transforms.append(
+    #        BrightnessMultiplicativeTransform(
+    #            (0.7, 1.5), per_channel=True, p_per_sample=0.15))
 
     # gamma transform. This is a nonlinear transformation of intensity values
     # (https://en.wikipedia.org/wiki/Gamma_correction)

@@ -159,8 +159,8 @@ if __name__ == "__main__":
     # Why is this not an IPython Notebook you may ask? Because I HATE IPython Notebooks. Simple :-)
 
     #list_of_lists = get_list_of_files(brats_folder_with_downloaded_train_data)
-    list_of_lists = get_list_of_files('/dev/shm/brats2018validation/')
-    brats_preprocessed_folder = '/dev/shm/brats2018-validation-preprocessed/'
+    list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2018/')
+    brats_preprocessed_folder = '/dev/shm/brats2018-preprocessed/'
     num_threads_for_brats_example = 8
     maybe_mkdir_p(brats_preprocessed_folder)
     
@@ -169,8 +169,7 @@ if __name__ == "__main__":
     p.starmap(load_and_preprocess, 
             zip(list_of_lists, 
                 patient_names, 
-                [brats_preprocessed_folder] * len(list_of_lists),
-                [False] * len(list_of_lists)
+                [brats_preprocessed_folder] * len(list_of_lists)
                 )
             )
     p.close()

@@ -58,6 +58,9 @@ parser.add_argument('--data_par', action='store_true',
 parser.add_argument('--no_dropout', action='store_true', 
     help='do not train with dropout (default: train with dropout)')
 
+parser.add_argument('--single_threaded', action='store_true', 
+    help='Single threaded data loading for debgging(default: multithreaded)')
+
 parser.add_argument('--seed', type=int, default=1, metavar='S', 
     help='random seed (default: 1)')
 
@@ -79,6 +82,9 @@ parser.add_argument('--batch_size', type=int, default=1, metavar='N',
 parser.add_argument('--save_freq', type=int, default=25, metavar='N', 
     help='save frequency (default: 25)')
 
+parser.add_argument('--batches_per_epoch', type=int, default=70, metavar='N', 
+    help='how many batches to use for training per epoch (default: 70)')
+
 parser.add_argument('--eval_freq', type=int, default=5, metavar='N', 
     help='evaluation frequency (default: 25)')
 
@@ -88,7 +94,6 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
 # Currently unused.
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
-
 
 args = parser.parse_args()
 
@@ -102,7 +107,6 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
 
 # batch_gen variables
 num_threads_for_brats_example = args.num_threads
-batches_per_epoch = 70
 brats_preprocessed_folder = args.data_dir
 patients = get_list_of_patients(brats_preprocessed_folder)
 #train, val = get_split_deterministic(patients, fold=0, num_splits=5, random_state=12345)
@@ -121,6 +125,7 @@ dataloader_train = BraTS2018DataLoader3D(
         max_shape, 
         num_threads_for_brats_example
         )
+
 dataloader_validation = BraTS2018DataLoader3D(
         train, 
         batch_size, 
@@ -138,8 +143,9 @@ val_gen = MultiThreadedAugmenter(dataloader_validation, None,
                                      num_cached_per_queue=1,
                                      seeds=None,
                                      pin_memory=False)
-#tr_gen = SingleThreadedAugmenter(dataloader_train, tr_transforms)
-#val_gen = SingleThreadedAugmenter(dataloader_validation, None)
+if args.single_threaded:
+    tr_gen = SingleThreadedAugmenter(dataloader_train, tr_transforms)
+    val_gen = SingleThreadedAugmenter(dataloader_validation, None)
 
 #model = UNet(cfg)
 if args.no_dropout:
@@ -181,7 +187,7 @@ print('beginning training')
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
-    train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device)
+    train_epoch(model, loss, optimizer, tr_gen, args.batches_per_epoch, device)
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(
@@ -193,7 +199,7 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.eval_freq == 0:
         # Evaluate on training data
-        train_res = validate(model, loss, val_gen, batches_per_epoch, device)
+        train_res = validate(model, loss, val_gen, args.batches_per_epoch, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
         values = [epoch + 1, train_res['train_loss'].data] \

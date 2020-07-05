@@ -19,6 +19,7 @@ def get_list_of_files(base_dir):
     :return:
     """
     filenames = []
+    
     for (dirpath, dirnames, files) in os.walk(base_dir):
         filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
 
@@ -96,7 +97,10 @@ def load_and_preprocess(case, patient_name, output_folder):
     for i in range(len(nonzero_masks)):
         brain_mask = brain_mask | nonzero_masks[i]
 
-    num_modes = len(imgs_npy)
+    # This shouldn't be hardcoded but we know all the BraTS stuff has 4 modalities. This will be
+    # a problem for a different data set with fewer (or more) modes.
+    num_modes = 4
+
     # now normalize each modality with its mean and standard deviation (computed within the brain mask)
     for i in range(num_modes):
         mean = imgs_npy[i][brain_mask].mean()
@@ -158,9 +162,17 @@ if __name__ == "__main__":
 
     # Why is this not an IPython Notebook you may ask? Because I HATE IPython Notebooks. Simple :-)
 
-    #list_of_lists = get_list_of_files(brats_folder_with_downloaded_train_data)
-    list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2018/')
-    brats_preprocessed_folder = '/dev/shm/brats2018-preprocessed/'
+    #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2018/')
+    #brats_preprocessed_folder = '/dev/shm/brats2018-preprocessed/'
+    #list_of_lists = get_list_of_files('/dev/shm/brats2018-validation/')
+    #brats_preprocessed_folder = '/dev/shm/brats2018-validation-preprocessed/'
+    #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData/')
+    #brats_preprocessed_folder = '/dev/shm/brats2020-validation-preprocessed/'
+    list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_TrainingData/')
+    brats_preprocessed_folder = '/dev/shm/brats2020-preprocessed/'
+    #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS_2019_Data_Training/')
+    #brats_preprocessed_folder = '/shared/mrfil-data/cddunca2/brats2020/brats2019-preprocessed/'
+
     num_threads_for_brats_example = 8
     maybe_mkdir_p(brats_preprocessed_folder)
     

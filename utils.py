@@ -145,6 +145,7 @@ def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
         output = model(src)
 
         cur_loss = loss(output, {'target':target, 'src':src})
+
         cur_loss.backward()
         optimizer.step()
     

@@ -7,6 +7,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
 from batchgenerators.utilities.file_and_folder_operations import *
+
 class BraTSValidation(Dataset):
     def __init__(self, data_dir):
         self.patients = get_list_of_patients(data_dir)        

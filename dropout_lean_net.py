@@ -10,16 +10,16 @@ class Encoder(nn.Module):
         self.sig = nn.Sigmoid()
         self.initLayer = nn.Conv3d(input_channels, 32, 
                 kernel_size=3, stride=1, padding=1)
-        self.block0 = ResNetBlock(32)
+        self.block0 = ResNetBlockWithDropout(32)
         self.ds1 = Downsample(32)
-        self.block1 = ResNetBlock(64)
+        self.block1 = ResNetBlockWithDropout(64)
         self.ds2 = Downsample(64)
-        self.block3 = ResNetBlock(128) 
+        self.block3 = ResNetBlockWithDropout(128) 
         self.ds3 = Downsample(128)
-        self.block5 = ResNetBlock(256) 
-        self.block6 = ResNetBlock(256) 
-        self.block7 = ResNetBlock(256) 
-        self.block8 = ResNetBlock(256)
+        self.block5 = ResNetBlockWithDropout(256) 
+        self.block6 = ResNetBlockWithDropout(256) 
+        self.block7 = ResNetBlockWithDropout(256) 
+        self.block8 = ResNetBlockWithDropout(256)
 
     def forward(self, x):
         # sp* is the state of the output at each spatial level
@@ -45,11 +45,11 @@ class Decoder(nn.Module):
     def __init__(self, output_channels=3):
         super(Decoder, self).__init__()
         self.cf1 = CompressFeatures(256, 128)
-        self.block9 = ResNetBlock(128) 
+        self.block9 = ResNetBlockWithDropout(128) 
         self.cf2 = CompressFeatures(128, 64)
-        self.block11 = ResNetBlock(64) 
+        self.block11 = ResNetBlockWithDropout(64) 
         self.cf3 = CompressFeatures(64, 32)
-        self.block13 = ResNetBlock(32)
+        self.block13 = ResNetBlockWithDropout(32)
         self.cf_final = CompressFeatures(32, output_channels)
 
         self.up = nn.Upsample(scale_factor=2, mode='nearest')
@@ -67,9 +67,9 @@ class Decoder(nn.Module):
         return output
      
 
-class LeaNet(nn.Module):
+class DropoutLeaNet(nn.Module):
     def __init__(self):
-        super(LeaNet, self).__init__()
+        super(DropoutLeaNet, self).__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
 

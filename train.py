@@ -17,7 +17,6 @@ from utils import (
     train_epoch,
     validate,
     )
-import models_min
 
 from batchgenerators.utilities.data_splitting import get_split_deterministic
 from batchgenerators.dataloading import MultiThreadedAugmenter, SingleThreadedAugmenter
@@ -29,6 +28,8 @@ from brats2018_dataloader import(
 from scheduler import PolynomialLR
 import losses
 from models import *
+from lean_net import LeaNet
+from dropout_lean_net import DropoutLeaNet
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
 
@@ -55,8 +56,11 @@ parser.add_argument('--loss', type=str, default='avgdice',
 parser.add_argument('--data_par', action='store_true', 
     help='data parellelism flag (default: off)')
 
-parser.add_argument('--no_dropout', action='store_true', 
+parser.add_argument('--dropout', action='store_true', 
     help='do not train with dropout (default: train with dropout)')
+
+parser.add_argument('--baseline', action='store_true', 
+    help='Use the baseline model (default: false)')
 
 parser.add_argument('--single_threaded', action='store_true', 
     help='Single threaded data loading for debgging(default: multithreaded)')
@@ -148,12 +152,22 @@ if args.single_threaded:
     val_gen = SingleThreadedAugmenter(dataloader_validation, None)
 
 #model = UNet(cfg)
-if args.no_dropout:
-    model = MonoUNet(dropout=False)
-else:
+#if args.no_dropout:
+#    model = MonoUNet(dropout=False)
+#else:
+#    model = MonoUNet()
+#model = models_min.UNet()
+
+if args.dropout:
+    print(f'Using architecture DropoutLeaNet.')
+    model = DropoutLeaNet()
+elif not args.baseline:
+    print(f'Using architecture LeaNet.')
+    model = LeaNet()
+elif args.baseline:
+    print(f'Using architecture MonoUNet.')
     model = MonoUNet()
 
-#model = models_min.UNet()
 #device_ids = [i for i in range(torch.cuda.device_count())]
 #model = nn.DataParallel(model, device_ids)
 
@@ -168,11 +182,11 @@ optimizer = \
 
 start_epoch = 0
 if args.resume:
-  print("Resume training from %s" % args.resume)
   checkpoint = torch.load(args.resume)
   start_epoch = checkpoint["epoch"]
   model.load_state_dict(checkpoint["state_dict"])
   optimizer.load_state_dict(checkpoint["optimizer"])    
+  print(f"Resume training from {args.resume} from epoch {start_epoch}.")
 
 # TODO: optimizer factory, allow for SGD with momentum etx.
 columns = ['ep', 'loss', 'dice_tc_agg',\

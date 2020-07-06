@@ -51,9 +51,9 @@ class ResNetBlock(nn.Module):
         return out
 
 class Encoder(nn.Module):
-    def __init__(self, dropout, input_channels=4):
+    def __init__(self, input_channels=4):
         super(Encoder, self).__init__()
-        self.dropout = dropout
+        self.dropout = None
         self.sig = nn.Sigmoid()
         self.initLayer = nn.Conv3d(input_channels, 32, 
                 kernel_size=3, stride=1, padding=1)
@@ -93,9 +93,9 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, dropout, output_channels=3):
+    def __init__(self, output_channels=3):
         super(Decoder, self).__init__()
-        self.dropout = dropout
+        self.dropout = None
         self.cf1 = CompressFeatures(256, 128)
         self.block9 = SimpleResNetBlock(128) 
         self.block10 = SimpleResNetBlock(128) 
@@ -126,10 +126,10 @@ class Decoder(nn.Module):
      
 
 class MonoUNet(nn.Module):
-    def __init__(self, dropout=True):
+    def __init__(self):
         super(MonoUNet, self).__init__()
-        self.encoder = Encoder(dropout)
-        self.decoder = Decoder(dropout)
+        self.encoder = Encoder()
+        self.decoder = Decoder()
 
     def forward(self, x):
         x = self.encoder(x)

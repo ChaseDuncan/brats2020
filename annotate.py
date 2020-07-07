@@ -10,38 +10,57 @@ from data_loader import BraTSValidation
 from batchgenerators.augmentations.utils import pad_nd_image
 from batchgenerators.augmentations.crop_and_pad_augmentations import crop
 from models import MonoUNet
-import models_min
+from lean_net import LeaNet
+from dropout_lean_net import DropoutLeaNet
 
 from batchgenerators.dataloading import MultiThreadedAugmenter, SingleThreadedAugmenter
 from brats2018_dataloader import BraTS2018DataLoader3D, get_list_of_patients
+from utils import get_free_gpu
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data from a given year.')
-device = torch.device('cuda:0')
-model = MonoUNet()
-#model = models_min.UNet()
-parser.add_argument('--model', type=str, required=True, metavar='NAME',
+device = torch.device(f'cuda:{get_free_gpu()}')
+
+parser.add_argument('--model', type=str, required=True, metavar='CLASS',
+    help='Which model class to use.')
+
+parser.add_argument('--model_name', type=str, required=True, metavar='NAME',
     help='Name of model to use for annotation.')
 
-parser.add_argument('--cp', type=int, required=True, metavar='N',
-    help='Checkpoint to use for annotation.')
+parser.add_argument('--cp', type=int, metavar='N',
+    help='Checkpoint to use for annotation. Optional.\
+            Default behavior is to use the checkpoint with highest epoch\
+            in the checkpoints directory for model NAME.')
 
 parser.add_argument('--year', type=int, required=True, metavar='N',
-    help='Year of BraTS data to label.')
+    help='Year of BraTS data to label. Used for creating naming directory to store\
+            output annotations.')
+
+parser.add_argument('--data_dir', type=str, help='Directory of validation data.')
 
 parser.add_argument('--thresh', type=float, default='0.5',
         help='The threshold for determining if a voxel should be labeled. (default: 0.5)')
 
 args = parser.parse_args()
 
+if args.model == 'MonoUNet':
+    model = MonoUNet()
+if args.model == 'LeaNet':
+    model = LeaNet()
+if args.model == 'LeaNetWithDropout':
+    model = DropoutLeaNet()
+if not args.cp:
+    args.cp = max([int(cpt[:-3].split('-')[-1]) 
+        for cpt in os.listdir(f'data/models/{args.model_name}/checkpoints/')])
 checkpoint =\
-        torch.load(f'data/models/{args.model}/checkpoints/checkpoint-{args.cp}.pt')
+        torch.load(f'data/models/{args.model_name}/checkpoints/checkpoint-{args.cp}.pt')
 
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 model = model.to(device)
 
-val = BraTSValidation(f'/dev/shm/brats{args.year}-validation-preprocessed')
+#val = BraTSValidation(f'/dev/shm/brats{args.year}-validation-preprocessed')
+val = BraTSValidation(args.data_dir)
 dataloader = DataLoader(val, batch_size=1, num_workers=0)
-annotation_dir = f'annotations/{args.model}/{args.year}/'
+annotation_dir = f'annotations/{args.model_name}/{args.year}/'
 os.makedirs(annotation_dir, exist_ok=True)
 
 with torch.no_grad():

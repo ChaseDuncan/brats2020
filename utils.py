@@ -15,9 +15,9 @@ import torch.utils.data.sampler as sampler
 from tqdm import tqdm
 
 def get_free_gpu():
-    os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
+    os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > /tmp/.tmp')
     memory_available = [int(x.split()[2]) for x in open('.tmp', 'r').readlines()]
-    os.system('rm .tmp')
+    os.system('rm /tmp/.tmp')
     return np.argmax(memory_available)
 
 def save_checkpoint(dir, epoch, name='checkpoint', **kwargs):
@@ -63,34 +63,6 @@ def save_prediction(src, target, preds, outdir, filename):
     wt_pred = preds[2, :, :, :]
     pred_img = nib.Nifti1Image(wt_pred, np.eye(4))
     nib.save(pred_img, os.path.join(outdir, filename+'.wt_pd.nii.gz'))
-
-
-class MRISegConfigParser():
-  def __init__(self, config_file):
-    config = ConfigParser()
-    config.read(config_file)
-    self.debug = False 
-    self.label_recon = False 
-
-    if config.has_option('data', 'debug'):
-      self.debug = config.getboolean('data', 'debug')
-
-    self.deterministic_train = \
-        config.getboolean('train_params', 'deterministic_train')
-    self.train_split = config.getfloat('train_params', 'train_split')
-    self.weight_decay = config.getfloat('train_params', 'weight_decay')
-    self.epochs = config.getint('train_params', 'epochs')
-    self.data_dir = config.get('data', 'data_dir')
-    self.log_dir = config.get('data', 'log_dir')
-    self.model_type = config.get('meta', 'model_type')
-    self.model_name = config.get('meta', 'model_name')
-    self.modes = json.loads(config.get('data', 'modes'))
-    self.loss = config.get('meta', 'loss')
-
-    if config.has_option('data', 'dims'):
-      self.dims = json.loads(config.get('data', 'dims'))
-    if config.has_option('meta', 'label_recon'):
-      self.label_recon = config.get_boolean('meta', 'label_recon')
 
 
 # TODO: clean this up vis a vis checkpoints vs saving model, etc.

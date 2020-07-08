@@ -16,6 +16,7 @@ from utils import (
     load_data,
     train_epoch,
     validate,
+    get_free_gpu
     )
 
 from batchgenerators.utilities.data_splitting import get_split_deterministic
@@ -44,7 +45,7 @@ parser.add_argument('--data_dir', type=str, required=True, metavar='PATH TO DATA
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
                         help='model name (default: None)')
 
-parser.add_argument('--device', type=int, required=True, metavar='n')
+parser.add_argument('--device', type=int, default=-1, metavar='n')
 parser.add_argument('--upsampling', type=str, default='bilinear', 
     choices=['bilinear', 'deconv'], 
     help='upsampling algorithm to use in decoder (default: bilinear)')
@@ -100,6 +101,10 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
     help='SGD momentum (default: 0.9)')
 
 args = parser.parse_args()
+if args.device < 0:
+    args.device = get_free_gpu()
+
+print(f'Using device {args.device}.')
 
 device = torch.device(f'cuda:{args.device}')
 #os.makedirs(f'{args.dir}/logs', exist_ok=True)
@@ -115,7 +120,8 @@ brats_preprocessed_folder = args.data_dir
 patients = get_list_of_patients(brats_preprocessed_folder)
 #train, val = get_split_deterministic(patients, fold=0, num_splits=5, random_state=12345)
 train = patients
-patch_size = (128, 128, 128)
+#patch_size = (128, 128, 128)
+patch_size = (160, 192, 128)
 batch_size = args.batch_size
 dataloader = BraTS2018DataLoader3D(train, batch_size, patch_size, 1)
 batch = next(dataloader)
@@ -197,7 +203,7 @@ columns = ['ep', 'loss', 'dice_tc_agg',\
 scheduler = PolynomialLR(optimizer, args.epochs)
 loss = losses.build(args.loss)
 
-print('beginning training')
+print('Beginning training.')
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()

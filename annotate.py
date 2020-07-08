@@ -59,6 +59,7 @@ model = model.to(device)
 
 #val = BraTSValidation(f'/dev/shm/brats{args.year}-validation-preprocessed')
 val = BraTSValidation(args.data_dir)
+print(len(val))
 dataloader = DataLoader(val, batch_size=1, num_workers=0)
 annotation_dir = f'annotations/{args.model_name}/{args.year}/'
 os.makedirs(annotation_dir, exist_ok=True)

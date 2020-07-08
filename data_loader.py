@@ -6,36 +6,8 @@ import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
-from batchgenerators.utilities.file_and_folder_operations import *
-
-class BraTSValidation(Dataset):
-    def __init__(self, data_dir):
-        self.patients = get_list_of_patients(data_dir)        
-        self.data_dir = data_dir
-        
-    def __len__(self):
-        return len(self.patients)
-    
-    def __getitem__(self, idx):
-        data, metadata = load_patient(os.path.join(self.data_dir, self.patients[idx]))
-        patient_id = self.patients[idx].split('/')[-1]
-        metadata['patient_id'] = patient_id
-        return data, metadata
-
 DEBUG=False
 #DEBUG=True
-
-def get_list_of_patients(preprocessed_data_folder):
-    npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
-    # remove npy file extension
-    patients = [i[:-4] for i in npy_files]
-    return patients
-
-
-def load_patient(patient):
-    data = np.load(patient + ".npy")
-    metadata = load_pickle(patient + ".pkl")
-    return data, metadata
 
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
@@ -169,13 +141,18 @@ class BraTSDataset(Dataset):
 
                 # whole tumor
                 seg_wt = np.zeros(seg.shape)
-                seg_wt[np.where(seg>0)] = 1
+                seg_wt[np.where(seg==1)] = 1
+                seg_wt[np.where(seg==2)] = 1
+                seg_wt[np.where(seg==4)] = 1
                 segs.append(seg_wt)
                
                 # tumor core
                 seg_tc = np.zeros(seg.shape)
-                seg_tc[np.where(seg==1 or seg == 4)] = 1
+                seg_tc[np.where(seg==1)] = 1
+                seg_tc[np.where(seg==4)] = 1
                 segs.append(seg_tc)
+
+                target = torch.from_numpy(np.stack(segs))
             else:
                 # necrotic/non-enhancing tumor
                 seg_ncr_net = np.zeros(seg.shape)
@@ -191,8 +168,7 @@ class BraTSDataset(Dataset):
                 seg_et = np.zeros(seg.shape)
                 seg_et[np.where(seg==4)] = 1
                 segs.append(seg_et)
-            target = torch.from_numpy(np.stack(segs))
-
+                target = torc
         if '_t1' in self.modes[0][idx] and not self.segs:
             target = self.modes[0][idx].replace('_t1', '')
         if DEBUG:

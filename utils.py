@@ -122,31 +122,29 @@ def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
         optimizer.step()
     
 
-def _validate(model, loss, val_gen, batches_per_epoch, device,  test):
+def _validate(model, loss, dataloader, device, test):
     total_loss = 0
     total_dice = 0
     total_dice_agg = 0
     total_examples = 0
     with torch.no_grad():
         model.eval()
-        for i, batch in enumerate(val_gen):
-            if i > batches_per_epoch:
-                break
-            src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
-                process_segs(batch['seg']).to(device, dtype=torch.float)
-            total_examples += src.size()[0]
+        for src, target in tqdm(dataloader):
+            src, target = src.to(device, dtype=torch.float),\
+                      target.to(device, dtype=torch.float)
             output = model(src)
+
+            total_examples += src.size()[0]
             total_loss += loss(output, {'target':target, 'src':src}) 
             total_dice += dice_score(output, target)
-            total_dice_agg += agg_dice_score(output, target)
-    
-    avg_dice = total_dice / total_examples
-    avg_dice_agg = total_dice_agg / total_examples 
-    avg_loss = total_loss / total_examples 
-    return avg_dice, avg_dice_agg, avg_loss
+            #total_dice_agg += agg_dice_score(output, target)
 
-# TODO: probably get rid of testloader
-def validate(model, loss, trainloader, batches_per_epoch, device, testloader=None):
+        avg_dice = total_dice / total_examples
+        avg_dice_agg = total_dice_agg / total_examples
+        avg_loss = total_loss / total_examples
+        return avg_dice, avg_dice_agg, avg_loss
+
+def validate(model, loss, trainloader, device):
   train_dice, train_dice_agg, train_loss =\
       _validate(model, loss, trainloader, batches_per_epoch, device, False)
   test_dice = None

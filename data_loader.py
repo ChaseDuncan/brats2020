@@ -176,7 +176,6 @@ class BraTSDataset(Dataset):
                 seg_tc = np.zeros(seg.shape)
                 seg_tc[np.where(seg==1 or seg == 4)] = 1
                 segs.append(seg_tc)
-
             else:
                 # necrotic/non-enhancing tumor
                 seg_ncr_net = np.zeros(seg.shape)

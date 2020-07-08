@@ -177,7 +177,6 @@ class BraTSDataset(Dataset):
                 seg_tc[np.where(seg==1 or seg == 4)] = 1
                 segs.append(seg_tc)
 
-                target = torch.from_numpy(np.stack(segs))
             else:
                 # necrotic/non-enhancing tumor
                 seg_ncr_net = np.zeros(seg.shape)
@@ -193,8 +192,7 @@ class BraTSDataset(Dataset):
                 seg_et = np.zeros(seg.shape)
                 seg_et[np.where(seg==4)] = 1
                 segs.append(seg_et)
-
-                target = torch.from_numpy(np.stack(segs))
+            target = torch.from_numpy(np.stack(segs))
 
         if '_t1' in self.modes[0][idx] and not self.segs:
             target = self.modes[0][idx].replace('_t1', '')

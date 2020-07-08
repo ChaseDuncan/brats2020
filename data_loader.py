@@ -196,7 +196,9 @@ class BraTSDataset(Dataset):
                 seg_et = np.zeros(seg.shape)
                 seg_et[np.where(seg==4)] = 1
                 segs.append(seg_et)
-                target = torc
+
+                target = torch.from_numpy(np.stack(segs))
+
         if '_t1' in self.modes[0][idx] and not self.segs:
             target = self.modes[0][idx].replace('_t1', '')
         if DEBUG:

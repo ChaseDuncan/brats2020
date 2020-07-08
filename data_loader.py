@@ -169,15 +169,12 @@ class BraTSDataset(Dataset):
 
                 # whole tumor
                 seg_wt = np.zeros(seg.shape)
-                seg_wt[np.where(seg==1)] = 1
-                seg_wt[np.where(seg==2)] = 1
-                seg_wt[np.where(seg==4)] = 1
+                seg_wt[np.where(seg>0)] = 1
                 segs.append(seg_wt)
                
                 # tumor core
                 seg_tc = np.zeros(seg.shape)
-                seg_tc[np.where(seg==1)] = 1
-                seg_tc[np.where(seg==4)] = 1
+                seg_tc[np.where(seg==1 or seg == 4)] = 1
                 segs.append(seg_tc)
 
                 target = torch.from_numpy(np.stack(segs))

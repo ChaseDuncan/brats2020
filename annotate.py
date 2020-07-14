@@ -77,7 +77,6 @@ with torch.no_grad():
         # This is silly going back and forth from torch tensor to numpy array
         # I don't really even need this general function here. I think I can
         # simplify this using pytorch lib.
-        
         data = pad_nd_image(data, new_shape.astype('int'))
 
         output = model(torch.from_numpy(data).to(device)).squeeze()

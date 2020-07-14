@@ -42,11 +42,11 @@ class UpsamplingDeconv3d(nn.Module):
                 dilation=1,
                 padding_mode='zeros')
 
-        def forward(self, x):
-            return self.deconv(x)
+    def forward(self, x):
+        return self.deconv(x)
 
 class ResNetBlockWithDropout(nn.Module):
-    def __init__(self, channels, num_groups=32):
+    def __init__(self, channels, num_groups=8):
         super(ResNetBlockWithDropout, self).__init__()
         self.feats = nn.Sequential(nn.GroupNorm(num_groups, channels),
             nn.ReLU(inplace=True),
@@ -67,7 +67,7 @@ class ResNetBlockWithDropout(nn.Module):
 
 
 class ResNetBlock(nn.Module):
-    def __init__(self, channels, num_groups=32):
+    def __init__(self, channels, num_groups=8):
         super(ResNetBlock, self).__init__()
         self.feats = nn.Sequential(nn.GroupNorm(num_groups, channels),
             nn.ReLU(inplace=True),

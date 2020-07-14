@@ -106,9 +106,9 @@ class CascadeAvgDiceLoss(nn.Module):
         self.biline_loss = AvgDiceLoss()
 
     def forward(self, output, targets):
-        return 0.33*(self.coarse_loss(output['coarse'], targets['target'])\
-                + self.biline_loss(output['biline'], targets['target'])\
-                + self.deconv_loss(output['deconv'], targets['target']))
+        return 0.33*(self.coarse_loss(output['coarse'], targets)\
+                + self.biline_loss(output['biline'], targets)\
+                + self.deconv_loss(output['deconv'], targets))
 
 class DiceLoss(nn.Module):
   def __init__(self):

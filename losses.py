@@ -90,6 +90,18 @@ class AvgDiceLoss(nn.Module):
     avg_dice = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
     return 1 - avg_dice
 
+class CascadeAvgDiceLoss(nn.Module):
+    def __init__(self):
+        super(CascadeAvgDiceLoss, self).__init__()
+        self.coarse_loss = AvgDiceLoss()
+        self.deconv_loss = AvgDiceLoss()
+        self.biline_loss = AvgDiceLoss()
+
+    def forward(self, output, targets):
+        return 0.33*(self.coarse_loss(output['coarse'], targets)\
+                + self.biline_loss(output['biline'], targets)\
+                + self.deconv_loss(output['deconv'], targets))
+
 class DiceLoss(nn.Module):
   def __init__(self):
     super(DiceLoss, self).__init__()

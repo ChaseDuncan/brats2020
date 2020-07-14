@@ -6,41 +6,14 @@ import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
-from batchgenerators.utilities.file_and_folder_operations import *
-
-class BraTSValidation(Dataset):
-    def __init__(self, data_dir):
-        self.patients = get_list_of_patients(data_dir)        
-        self.data_dir = data_dir
-        
-    def __len__(self):
-        return len(self.patients)
-    
-    def __getitem__(self, idx):
-        data, metadata = load_patient(os.path.join(self.data_dir, self.patients[idx]))
-        patient_id = self.patients[idx].split('/')[-1]
-        metadata['patient_id'] = patient_id
-        return data, metadata
-
 DEBUG=False
 #DEBUG=True
 
-def get_list_of_patients(preprocessed_data_folder):
-    npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
-    # remove npy file extension
-    patients = [i[:-4] for i in npy_files]
-    return patients
-
-
-def load_patient(patient):
-    data = np.load(patient + ".npy")
-    metadata = load_pickle(patient + ".pkl")
-    return data, metadata
-
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-        dims=[240, 240, 155], augment_data = False):
+        dims=[240, 240, 155], augment_data = False, clinical_segs=True):
 
+        self.clinical_segs = True
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0
@@ -59,27 +32,25 @@ class BraTSDataset(Dataset):
         self.segs = sorted([ f for f in filenames if "seg.nii.gz" in f ])
 
         self.augment_data = augment_data
+
         # randomly flip along axis
         self.axis = None
-        # TODO: random flip isn't working
-        if self.augment_data:
-          if a > 0.5:
+        if self.augment_data and np.random.uniform() > 0.5:
             self.axis = np.random.choice([0, 1, 2], 1)[0]
+
         # for debugging
         self.src = None
         self.target = None
-
 
     def __len__(self):
         # return size of dataset
         return max([len(self.modes[i]) for i in range(len(self.modes))])
 
-
     def data_aug(self, brain):
         if self.axis:
             brain = np.flip(brain, self.axis).copy()
-        shift_brain = brain + torch.Tensor(np.random.uniform(-0.1, 0.1, brain.shape)).double().cuda()
-        scale_brain = shift_brain*torch.Tensor(np.random.uniform(0.9, 1.1, brain.shape)).double().cuda()
+        shift_brain = brain + torch.Tensor(np.random.uniform(-0.1, 0.1, brain.shape)).double()
+        scale_brain = shift_brain*torch.Tensor(np.random.uniform(0.9, 1.1, brain.shape)).double()
         return scale_brain
 
 
@@ -160,22 +131,45 @@ class BraTSDataset(Dataset):
 
             segs = []
             # TODO: Wrap in a loop.
-            seg_ncr_net = np.zeros(seg.shape)
-            seg_ncr_net[np.where(seg==1)] = 1
-            segs.append(seg_ncr_net)
+            if self.clinical_segs:
+                # enhancing tumor
+                seg_et = np.zeros(seg.shape)
+                seg_et[np.where(seg==4)] = 1
+                segs.append(seg_et)
 
-            seg_ed = np.zeros(seg.shape)
-            seg_ed[np.where(seg==2)] = 1
-            segs.append(seg_ed)
+                # whole tumor
+                seg_wt = np.zeros(seg.shape)
+                seg_wt[np.where(seg > 0)] = 1
+                segs.append(seg_wt)
+               
+                # tumor core
+                seg_tc = np.zeros(seg.shape)
+                seg_tc[np.where(seg==1) or np.where(seg==4)] = 1
+                segs.append(seg_tc)
 
-            seg_et = np.zeros(seg.shape)
-            seg_et[np.where(seg==4)] = 1
-            segs.append(seg_et)
-            target = torch.from_numpy(np.stack(segs))
+                target = torch.from_numpy(np.stack(segs))
+            else:
+                # necrotic/non-enhancing tumor
+                seg_ncr_net = np.zeros(seg.shape)
+                seg_ncr_net[np.where(seg==1)] = 1
+                segs.append(seg_ncr_net)
+                
+                # edema
+                seg_ed = np.zeros(seg.shape)
+                seg_ed[np.where(seg==2)] = 1
+                segs.append(seg_ed)
+                
+                # enhancing tumor
+                seg_et = np.zeros(seg.shape)
+                seg_et[np.where(seg==4)] = 1
+                segs.append(seg_et)
+                target = torch.from_numpy(np.stack(segs))
 
         if '_t1' in self.modes[0][idx] and not self.segs:
             target = self.modes[0][idx].replace('_t1', '')
+
         if DEBUG:
             self.src = src
             self.target = target
+
         return src, target

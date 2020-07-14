@@ -166,14 +166,16 @@ if __name__ == "__main__":
     #brats_preprocessed_folder = '/dev/shm/brats2018-preprocessed/'
     #list_of_lists = get_list_of_files('/dev/shm/brats2018-validation/')
     #brats_preprocessed_folder = '/dev/shm/brats2018-validation-preprocessed/'
-    list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData/')
-    brats_preprocessed_folder = '/shared/mrfil-data/cddunca2/brats2020/brats2020-validation-preprocessed/'
+    #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData/')
+    #brats_preprocessed_folder = '/shared/mrfil-data/cddunca2/brats2020/brats2020-validation-preprocessed/'
     #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_TrainingData/')
     #brats_preprocessed_folder = '/dev/shm/brats2020-preprocessed/'
     #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS_2019_Data_Training/')
     #brats_preprocessed_folder = '/shared/mrfil-data/cddunca2/brats2020/brats2019-preprocessed/'
     #list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2018validation/')
     #brats_preprocessed_folder = '/shared/mrfil-data/cddunca2/brats2018-validation-preprocessed/'
+    list_of_lists = get_list_of_files('/shared/mrfil-data/cddunca2/brats2018-biascorrect-validation/')
+    brats_preprocessed_folder = '/shared/mrfil-data/cddunca2/brats2018-biascorrect-validation-preprocessed/'
 
     num_threads_for_brats_example = 8
     maybe_mkdir_p(brats_preprocessed_folder)

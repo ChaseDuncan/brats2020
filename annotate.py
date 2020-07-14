@@ -93,7 +93,6 @@ with torch.no_grad():
         label[np.where(ed > args.thresh)] = 2
         label[np.where(et > args.thresh)] = 4
         
-        
         output_file = os.path.join(annotation_dir, f'{metadata["patient_id"][0]}.nii.gz')
         BraTS2018DataLoader3D.save_segmentation_as_nifti(label, metadata, output_file)
 

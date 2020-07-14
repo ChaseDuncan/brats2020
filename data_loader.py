@@ -7,12 +7,40 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 from abc import abstractmethod
 
+from batchgenerators.utilities.file_and_folder_operations import *
+
+class BraTSValidation(Dataset):
+    def __init__(self, data_dir):
+        self.patients = get_list_of_patients(data_dir)        
+        self.data_dir = data_dir
+        
+    def __len__(self):
+        return len(self.patients)
+    
+    def __getitem__(self, idx):
+        data, metadata = load_patient(os.path.join(self.data_dir, self.patients[idx]))
+        patient_id = self.patients[idx].split('/')[-1]
+        metadata['patient_id'] = patient_id
+        return data, metadata
+
 DEBUG=False
 #DEBUG=True
 
+def get_list_of_patients(preprocessed_data_folder):
+    npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
+    # remove npy file extension
+    patients = [i[:-4] for i in npy_files]
+    return patients
+
+
+def load_patient(patient):
+    data = np.load(patient + ".npy")
+    metadata = load_pickle(patient + ".pkl")
+    return data, metadata
+
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-        dims=[240, 240, 155], augment_data = False, clinical_segs=True):
+        dims=[240, 240, 155], augment_data = False):
 
         self.clinical_segs = clinical_segs
         self.x_off = 0
@@ -33,7 +61,6 @@ class BraTSDataset(Dataset):
         self.segs = sorted([ f for f in filenames if "seg.nii.gz" in f ])
 
         self.augment_data = augment_data
-
         # randomly flip along axis
         self.axis = None
         if self.augment_data and np.random.uniform() > 0.5:
@@ -43,9 +70,11 @@ class BraTSDataset(Dataset):
         self.src = None
         self.target = None
 
+
     def __len__(self):
         # return size of dataset
         return max([len(self.modes[i]) for i in range(len(self.modes))])
+
 
     def data_aug(self, brain):
         if self.axis:
@@ -156,6 +185,7 @@ class BraTSTrainDataset(BraTSDataset):
                 seg = np.flip(seg, axis)
 
             segs = []
+
             if self.clinical_segs:
                 # enhancing tumor
                 seg_et = np.zeros(seg.shape)

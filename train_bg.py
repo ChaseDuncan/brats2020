@@ -91,19 +91,48 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
-torch.manual_seed(args.seed)
-torch.cuda.manual_seed(args.seed)
-np.random.seed(args.seed)
-random.seed(args.seed)
-torch.manual_seed(args.seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
+# batch_gen variables
+num_threads_for_brats_example = args.num_threads
+brats_preprocessed_folder = args.data_dir
+patients = get_list_of_patients(brats_preprocessed_folder)
+#train, val = get_split_deterministic(patients, fold=0, num_splits=5, random_state=12345)
+train = patients
+#patch_size = (128, 128, 128)
+patch_size = (160, 192, 128)
+batch_size = args.batch_size
+dataloader = BraTS2018DataLoader3D(train, batch_size, patch_size, 1)
+batch = next(dataloader)
+shapes = [BraTS2018DataLoader3D.load_patient(i)[0].shape[1:] for i in patients]
+max_shape = np.max(shapes, 0)
+max_shape = np.max((max_shape, patch_size), 0)
 
-dims=[160, 192, 128]
-brats_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
-trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
-                        shuffle=True, num_workers=args.num_workers)
+dataloader_train = BraTS2018DataLoader3D(
+        train, 
+        batch_size, 
+        max_shape, 
+        num_threads_for_brats_example
+        )
 
+dataloader_validation = BraTS2018DataLoader3D(
+        train, 
+        batch_size, 
+        patch_size, 
+        max(1, num_threads_for_brats_example // 2)
+        )
+
+
+tr_transforms = get_train_transform(patch_size)
+tr_gen = MultiThreadedAugmenter(dataloader_train, tr_transforms, num_processes=num_threads_for_brats_example,
+                                    num_cached_per_queue=3,
+                                    seeds=None, pin_memory=False)
+val_gen = MultiThreadedAugmenter(dataloader_validation, None,
+                                     num_processes=max(1, num_threads_for_brats_example // 2), 
+                                     num_cached_per_queue=1,
+                                     seeds=None,
+                                     pin_memory=False)
+if args.single_threaded:
+    tr_gen = SingleThreadedAugmenter(dataloader_train, tr_transforms)
+    val_gen = SingleThreadedAugmenter(dataloader_validation, None)
 
 if args.model_name == 'MonoUNet':
     model = MonoUNet()
@@ -124,8 +153,9 @@ if args.resume:
   optimizer.load_state_dict(checkpoint["optimizer"])    
 
 # TODO: optimizer factory, allow for SGD with momentum etx.
-columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
-   'time', 'mem_usage']
+columns = ['ep', 'loss', 'dice_tc_agg',\
+  'dice_et_agg', 'dice_ed_agg', 'dice_ncr', 'dice_et',\
+  'dice_wt', 'time', 'mem_usage']
 
 #writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = PolynomialLR(optimizer, args.epochs)
@@ -147,13 +177,12 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.eval_freq == 0:
         # Evaluate on training data
-        model.eval()
-        train_val = validate(model, loss, trainloader, device)
+        train_res = validate(model, loss, val_gen, args.batches_per_epoch, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        values = [epoch + 1, train_val['train_loss'].data] \
-          + train_val['train_dice'].tolist()\
-
+        values = [epoch + 1, train_res['train_loss'].data] \
+          + train_res['train_dice_agg'].tolist() + \
+          train_res['train_dice'].tolist()\
           + [ time_ep, memory_usage] 
         table = tabulate.tabulate([values], 
                 columns, tablefmt="simple", floatfmt="8.4f")

@@ -25,54 +25,46 @@ class SimpleResNetBlock(nn.Module):
 
 
 class ResNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, num_groups=None):
+    def __init__(self, in_channels, num_groups=8):
         super(ResNetBlock, self).__init__()
-        if num_groups:
-            self.feats = nn.Sequential(nn.GroupNorm(num_groups, in_channels),
-                nn.ReLU(inplace=True),
-                nn.Conv3d(in_channels, out_channels, 
-                    kernel_size=3, stride=1, padding=1),
-                nn.GroupNorm(num_groups, out_channels),
-                nn.ReLU(inplace=True),
-                nn.Conv3d(out_channels, out_channels, 
-                    kernel_size=3, stride=1, padding=1))
-        else:
-            self.feats = nn.Sequential(
-                nn.Conv3d(in_channels, out_channels, 
-                    kernel_size=3, stride=1, padding=1),
-                nn.ReLU(inplace=True))
+        self.feats = nn.Sequential(nn.GroupNorm(num_groups, in_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(in_channels, in_channels, 
+                kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(num_groups, in_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(in_channels, in_channels, 
+                kernel_size=3, stride=1, padding=1))
 
     def forward(self, x):
         residual = x
         out = self.feats(x)
-        
-        if out.size() == residual.size():
-            out += residual
+        out += residual
         return out
 
 class Encoder(nn.Module):
     def __init__(self, input_channels=4):
         super(Encoder, self).__init__()
-        self.dropout = None
+        self.dropout = nn.Dropout3d()
         self.sig = nn.Sigmoid()
         self.initLayer = nn.Conv3d(input_channels, 32, 
                 kernel_size=3, stride=1, padding=1)
-        self.block0 = SimpleResNetBlock(32)
+        self.block0 = ResNetBlock(32)
         self.ds1 = Downsample(32)
-        self.block1 = SimpleResNetBlock(64)
-        self.block2 = SimpleResNetBlock(64) 
+        self.block1 = ResNetBlock(64)
+        self.block2 = ResNetBlock(64) 
         self.ds2 = Downsample(64)
-        self.block3 = SimpleResNetBlock(128) 
-        self.block4 = SimpleResNetBlock(128) 
+        self.block3 = ResNetBlock(128) 
+        self.block4 = ResNetBlock(128) 
         self.ds3 = Downsample(128)
-        self.block5 = SimpleResNetBlock(256) 
-        self.block6 = SimpleResNetBlock(256) 
-        self.block7 = SimpleResNetBlock(256) 
-        self.block8 = SimpleResNetBlock(256)
+        self.block5 = ResNetBlock(256) 
+        self.block6 = ResNetBlock(256) 
+        self.block7 = ResNetBlock(256) 
+        self.block8 = ResNetBlock(256)
 
     def forward(self, x):
         # sp* is the state of the output at each spatial level
-        sp0 = self.initLayer(x)
+        sp0 = self.dropout(self.initLayer(x))
         sp1 = self.block0(sp0)
         sp2 = self.ds1(sp1)
         sp2 = self.block1(sp2)
@@ -95,16 +87,15 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, output_channels=3):
         super(Decoder, self).__init__()
-        self.dropout = None
         self.cf1 = CompressFeatures(256, 128)
-        self.block9 = SimpleResNetBlock(128) 
-        self.block10 = SimpleResNetBlock(128) 
+        self.block9 = ResNetBlock(128) 
+        self.block10 = ResNetBlock(128) 
         self.cf2 = CompressFeatures(128, 64)
-        self.block11 = SimpleResNetBlock(64) 
-        self.block12 = SimpleResNetBlock(64) 
+        self.block11 = ResNetBlock(64) 
+        self.block12 = ResNetBlock(64) 
         self.cf3 = CompressFeatures(64, 32)
-        self.block13 = SimpleResNetBlock(32)
-        self.block14 = SimpleResNetBlock(32)
+        self.block13 = ResNetBlock(32)
+        self.block14 = ResNetBlock(32)
         self.cf_final = CompressFeatures(32, output_channels)
 
         self.up = nn.Upsample(scale_factor=2, mode='nearest')

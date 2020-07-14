@@ -162,22 +162,30 @@ def _validate(model, loss, dataloader, device):
             total_examples+=src.size()[0]
             output = model(src)
             total_loss += loss(output, {'target':target, 'src':src}) 
-            average_seg = 0.5*(output['deconv'] + output['biline'])
-            total_dice += dice_score(average_seg, target)
-            total_dice_agg += agg_dice_score(average_seg, target)
+            total_dice += dice_score(output, target)
+            total_dice_agg += agg_dice_score(output, target)
+            ####### 
+            # CascadeNet
+            #
+            #average_seg = 0.5*(output['deconv'] + output['biline'])
+            #total_dice += dice_score(average_seg, target)
+            #total_dice_agg += agg_dice_score(average_seg, target)
         
         avg_dice = total_dice / total_examples
         avg_dice_agg = total_dice_agg / total_examples 
         avg_loss = total_loss /  total_examples
         return avg_dice, avg_dice_agg, avg_loss
 
-# TODO: probably get rid of testloader
 def validate(model, loss, trainloader, device):
   train_dice, train_dice_agg, train_loss =\
       _validate(model, loss, trainloader, device)
   test_dice = None
   test_dice_agg = None
   test_loss = None
+
+  if testloader:
+    test_dice, test_dice_agg, test_loss =\
+        _validate(model, loss, testloader, device, True)
 
   return {'train_dice':train_dice, 'train_dice_agg':train_dice_agg, 
           'train_loss':train_loss, 'test_dice':test_dice, 

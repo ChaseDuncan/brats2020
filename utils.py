@@ -149,7 +149,7 @@ def train(model, loss, optimizer, train_dataloader, device):
     optimizer.step()
     
 
-def _validate(model, loss, dataloader, device, test):
+def _validate(model, loss, dataloader, device):
     total_loss = 0
     total_dice = 0
     total_dice_agg = 0
@@ -164,16 +164,21 @@ def _validate(model, loss, dataloader, device, test):
             total_loss += loss(output, {'target':target, 'src':src}) 
             total_dice += dice_score(output, target)
             total_dice_agg += agg_dice_score(output, target)
+            ####### 
+            # CascadeNet
+            #
+            #average_seg = 0.5*(output['deconv'] + output['biline'])
+            #total_dice += dice_score(average_seg, target)
+            #total_dice_agg += agg_dice_score(average_seg, target)
         
         avg_dice = total_dice / total_examples
         avg_dice_agg = total_dice_agg / total_examples 
         avg_loss = total_loss /  total_examples
         return avg_dice, avg_dice_agg, avg_loss
 
-# TODO: probably get rid of testloader
-def validate(model, loss, trainloader, device, testloader=None):
+def validate(model, loss, trainloader, device):
   train_dice, train_dice_agg, train_loss =\
-      _validate(model, loss, trainloader, device, False)
+      _validate(model, loss, trainloader, device)
   test_dice = None
   test_dice_agg = None
   test_loss = None

@@ -5,6 +5,7 @@ import nibabel as nib
 import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
+from abc import abstractmethod
 
 DEBUG=False
 #DEBUG=True
@@ -37,6 +38,7 @@ class BraTSDataset(Dataset):
         self.axis = None
         if self.augment_data and np.random.uniform() > 0.5:
             self.axis = np.random.choice([0, 1, 2], 1)[0]
+
         # for debugging
         self.src = None
         self.target = None
@@ -48,14 +50,8 @@ class BraTSDataset(Dataset):
     def data_aug(self, brain):
         if self.axis:
             brain = np.flip(brain, self.axis).copy()
-        shift_brain = brain + \
-                torch.Tensor(
-                        np.random.uniform(
-                            -0.1, 0.1, brain.shape)
-                        ).double()
-        scale_brain = shift_brain*torch.Tensor(
-                np.random.uniform(0.9, 1.1, brain.shape)
-                ).double()
+        shift_brain = brain + torch.Tensor(np.random.uniform(-0.1, 0.1, brain.shape)).double()
+        scale_brain = shift_brain*torch.Tensor(np.random.uniform(0.9, 1.1, brain.shape)).double()
         return scale_brain
 
 
@@ -105,7 +101,14 @@ class BraTSDataset(Dataset):
         d = torch.from_numpy(d)
         d = (d - d.min()) / (d.max() - d.min())
         return d
+    @abstractmethod
+    def __getitem__(self, idx):
+        pass
 
+class BraTSTrainDataset(BraTSDataset):
+    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
+        dims=[240, 240, 155], augment_data = False, clinical_segs=True):
+        super.__init__(self, data_dir, modes, dims, augment_data, clinical_segs)
 
     def __getitem__(self, idx):
         if DEBUG and self.src != None and self.target != None:
@@ -153,7 +156,6 @@ class BraTSDataset(Dataset):
                 seg = np.flip(seg, axis)
 
             segs = []
-
             if self.clinical_segs:
                 # enhancing tumor
                 seg_et = np.zeros(seg.shape)
@@ -186,12 +188,12 @@ class BraTSDataset(Dataset):
                 seg_et = np.zeros(seg.shape)
                 seg_et[np.where(seg==4)] = 1
                 segs.append(seg_et)
-
                 target = torch.from_numpy(np.stack(segs))
 
         if DEBUG:
             self.src = src
             self.target = target
+
         return src, target
         ## this has to be on for outputing segmentations
         #  otherwise the metadata won't be correct
@@ -212,3 +214,4 @@ class BraTSDataset(Dataset):
         #        'file': [self.modes[0][idx]]
         #        }
 
+#### SUBCLASS VALIDATION TRAIN

@@ -18,7 +18,7 @@ from utils import (
     validate,
     )
 
-
+from cascade_net import CascadeNet
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
@@ -100,11 +100,15 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
 dims=[160, 192, 128]
-brats_data = BraTSDataset(args.data_dir, dims=dims, augment_data=True)
+brats_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
 trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
                         shuffle=True, num_workers=args.num_workers)
 
-model = MonoUNet()
+if args.model_name == 'MonoUNet':
+    model = MonoUNet()
+if args.model_name == 'CascadeNet':
+    model = CascadeNet()
+
 model = model.to(device)
 
 optimizer = \
@@ -124,7 +128,7 @@ columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
 
 #writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = PolynomialLR(optimizer, args.epochs)
-loss = losses.build(args.loss)
+loss = losses.CascadeAvgDiceLoss()
 
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
@@ -142,11 +146,12 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.eval_freq == 0:
         # Evaluate on training data
-        train_res = validate(model, loss, trainloader, device)
+        model.eval()
+        train_val = validate(model, loss, trainloader, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        values = [epoch + 1, train_res['train_loss'].data] \
-          + train_res['train_dice'].tolist()\
+        values = [epoch + 1, train_val['train_loss'].data] \
+          + train_val['train_dice'].tolist()\
           + [ time_ep, memory_usage] 
         table = tabulate.tabulate([values], 
                 columns, tablefmt="simple", floatfmt="8.4f")

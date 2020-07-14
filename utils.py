@@ -84,27 +84,6 @@ def load_data(dataset):
   cv_trainloader, cv_testloader = cross_validation(dataset)
   return cv_trainloader[0], cv_testloader[0]
 
-def process_segs_clinical(seg):
-    # iterate over each example in the batch
-    segs = []
-    seg = np.squeeze(seg)
-    patch_size = seg.shape[1], seg.shape[2], seg.shape[3]
-    for b in range(seg.shape[0]):
-        seg_t = []
-        seg_et = np.zeros(patch_size)
-        seg_et[np.where(seg[b, :, :, :] == 4)] = 1
-        seg_t.append(seg_et)
-
-        seg_wt = np.zeros(patch_size)
-        seg_wt[np.where(seg[b, :, :, :] > 0)] = 1
-        seg_t.append(seg_wt)
-
-        seg_et = np.zeros(patch_size)
-        seg_et[np.where(seg[b, :, :, :] == 3)] = 1
-        seg_t.append(seg_et)
-        segs.append(seg_t)
-    return torch.from_numpy(np.array(segs))
-
 def process_segs(seg):
     # iterate over each example in the batch
     segs = []

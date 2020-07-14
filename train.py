@@ -82,7 +82,7 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-device = torch.device('cuda')
+device = torch.device('cuda:1')
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
@@ -100,11 +100,15 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
 dims=[160, 192, 128]
-brats_data = BraTSDataset(args.data_dir, dims=dims, augment_data=True)
+brats_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
 trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
                         shuffle=True, num_workers=args.num_workers)
 
-model = CascadeNet()
+if args.model_name == 'MonoUNet':
+    model = MonoUNet()
+if args.model_name == 'CascadeNet':
+    model = CascadeNet()
+
 model = model.to(device)
 
 optimizer = \

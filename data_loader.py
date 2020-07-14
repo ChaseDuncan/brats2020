@@ -5,6 +5,7 @@ import nibabel as nib
 import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
+from abc import abstractmethod
 
 DEBUG=False
 #DEBUG=True
@@ -13,7 +14,7 @@ class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
         dims=[240, 240, 155], augment_data = False, clinical_segs=True):
 
-        self.clinical_segs = True
+        self.clinical_segs = clinical_segs
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0
@@ -67,7 +68,7 @@ class BraTSDataset(Dataset):
       return d_trans
 
     def _transform_data(self, d):
-        img = nib.load(d).get_fdata()
+        img = d.get_fdata()
         x, y, z = img.shape
         add_x = x % 2 
         add_y = y % 2 
@@ -75,7 +76,10 @@ class BraTSDataset(Dataset):
         npad = ((0, add_x),
                 (0, add_y),
                 (0, add_z))
-        img = np.pad(img, pad_width=npad, mode='constant', constant_values=0)
+        img = np.pad(img, 
+                pad_width=npad, 
+                mode='constant', 
+                constant_values=0)
         self.x_off = (img.shape[0] - self.dims[0]) // 2
         self.y_off = (img.shape[1] - self.dims[1]) // 2
         self.z_off = (img.shape[2] - self.dims[2]) // 2
@@ -83,6 +87,7 @@ class BraTSDataset(Dataset):
         img = img[self.x_off:img.shape[0]-self.x_off,
               self.y_off:img.shape[1]-self.y_off,
               self.z_off:img.shape[2]-self.z_off]
+
         img_trans = self.min_max_normalize(img)
         #img_trans = self.std_normalize(img)
 
@@ -96,7 +101,14 @@ class BraTSDataset(Dataset):
         d = torch.from_numpy(d)
         d = (d - d.min()) / (d.max() - d.min())
         return d
+    @abstractmethod
+    def __getitem__(self, idx):
+        pass
 
+class BraTSTrainDataset(BraTSDataset):
+    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
+        dims=[240, 240, 155], augment_data = False, clinical_segs=True):
+        super.__init__(self, data_dir, modes, dims, augment_data, clinical_segs)
 
     def __getitem__(self, idx):
         if DEBUG and self.src != None and self.target != None:
@@ -104,7 +116,21 @@ class BraTSDataset(Dataset):
         elif DEBUG:
             idx=0
 
-        data = [self._transform_data(m[idx]) for m in self.modes]
+        def _patient(f):
+            return f.split('/')[-2]
+
+        def _load_images(idx):
+            images = []
+            for m in self.modes:
+                image = nib.load(m[idx])
+                images.append(image)
+
+                header = image.header
+            return images, header
+        
+        # header data should be handled in preprocessing, not here
+        images, header = _load_images(idx) 
+        data = [self._transform_data(img) for img in images]
         src = torch.stack(data)
 
         target = []
@@ -130,7 +156,6 @@ class BraTSDataset(Dataset):
                 seg = np.flip(seg, axis)
 
             segs = []
-            # TODO: Wrap in a loop.
             if self.clinical_segs:
                 # enhancing tumor
                 seg_et = np.zeros(seg.shape)
@@ -165,11 +190,28 @@ class BraTSDataset(Dataset):
                 segs.append(seg_et)
                 target = torch.from_numpy(np.stack(segs))
 
-        if '_t1' in self.modes[0][idx] and not self.segs:
-            target = self.modes[0][idx].replace('_t1', '')
-
         if DEBUG:
             self.src = src
             self.target = target
 
         return src, target
+        ## this has to be on for outputing segmentations
+        #  otherwise the metadata won't be correct
+        #return {'patient': _patient(self.modes[0][idx]), 
+        #        'data': src, 
+        #        'seg': target, 
+        #        # this should be done in preprocessing or something not here
+        #        'qoffsets': [
+        #            header['qoffset_x'],
+        #            header['qoffset_y'],
+        #            header['qoffset_z']
+        #            ],
+        #        'srows': [
+        #            header['srow_x'],
+        #            header['srow_y'],
+        #            header['srow_z'],
+        #            ],
+        #        'file': [self.modes[0][idx]]
+        #        }
+
+#### SUBCLASS VALIDATION TRAIN

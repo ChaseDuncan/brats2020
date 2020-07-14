@@ -1,2 +1,8 @@
 *.swp
 __pycache__/
+
+annotations/
+batchgenerators/
+bu/
+data/
+

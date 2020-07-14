@@ -5,6 +5,7 @@ import nibabel as nib
 import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
+from abc import abstractmethod
 
 from batchgenerators.utilities.file_and_folder_operations import *
 
@@ -41,6 +42,7 @@ class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
         dims=[240, 240, 155], augment_data = False):
 
+        self.clinical_segs = clinical_segs
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0
@@ -61,10 +63,9 @@ class BraTSDataset(Dataset):
         self.augment_data = augment_data
         # randomly flip along axis
         self.axis = None
-        # TODO: random flip isn't working
-        if self.augment_data:
-          if a > 0.5:
+        if self.augment_data and np.random.uniform() > 0.5:
             self.axis = np.random.choice([0, 1, 2], 1)[0]
+
         # for debugging
         self.src = None
         self.target = None
@@ -78,8 +79,8 @@ class BraTSDataset(Dataset):
     def data_aug(self, brain):
         if self.axis:
             brain = np.flip(brain, self.axis).copy()
-        shift_brain = brain + torch.Tensor(np.random.uniform(-0.1, 0.1, brain.shape)).double().cuda()
-        scale_brain = shift_brain*torch.Tensor(np.random.uniform(0.9, 1.1, brain.shape)).double().cuda()
+        shift_brain = brain + torch.Tensor(np.random.uniform(-0.1, 0.1, brain.shape)).double()
+        scale_brain = shift_brain*torch.Tensor(np.random.uniform(0.9, 1.1, brain.shape)).double()
         return scale_brain
 
 
@@ -96,7 +97,7 @@ class BraTSDataset(Dataset):
       return d_trans
 
     def _transform_data(self, d):
-        img = nib.load(d).get_fdata()
+        img = d.get_fdata()
         x, y, z = img.shape
         add_x = x % 2 
         add_y = y % 2 
@@ -104,7 +105,10 @@ class BraTSDataset(Dataset):
         npad = ((0, add_x),
                 (0, add_y),
                 (0, add_z))
-        img = np.pad(img, pad_width=npad, mode='constant', constant_values=0)
+        img = np.pad(img, 
+                pad_width=npad, 
+                mode='constant', 
+                constant_values=0)
         self.x_off = (img.shape[0] - self.dims[0]) // 2
         self.y_off = (img.shape[1] - self.dims[1]) // 2
         self.z_off = (img.shape[2] - self.dims[2]) // 2
@@ -112,6 +116,7 @@ class BraTSDataset(Dataset):
         img = img[self.x_off:img.shape[0]-self.x_off,
               self.y_off:img.shape[1]-self.y_off,
               self.z_off:img.shape[2]-self.z_off]
+
         img_trans = self.min_max_normalize(img)
         #img_trans = self.std_normalize(img)
 
@@ -125,7 +130,14 @@ class BraTSDataset(Dataset):
         d = torch.from_numpy(d)
         d = (d - d.min()) / (d.max() - d.min())
         return d
+    @abstractmethod
+    def __getitem__(self, idx):
+        pass
 
+class BraTSTrainDataset(BraTSDataset):
+    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
+        dims=[240, 240, 155], augment_data = False, clinical_segs=True):
+        super.__init__(self, data_dir, modes, dims, augment_data, clinical_segs)
 
     def __getitem__(self, idx):
         if DEBUG and self.src != None and self.target != None:
@@ -133,7 +145,21 @@ class BraTSDataset(Dataset):
         elif DEBUG:
             idx=0
 
-        data = [self._transform_data(m[idx]) for m in self.modes]
+        def _patient(f):
+            return f.split('/')[-2]
+
+        def _load_images(idx):
+            images = []
+            for m in self.modes:
+                image = nib.load(m[idx])
+                images.append(image)
+
+                header = image.header
+            return images, header
+        
+        # header data should be handled in preprocessing, not here
+        images, header = _load_images(idx) 
+        data = [self._transform_data(img) for img in images]
         src = torch.stack(data)
 
         target = []
@@ -159,23 +185,63 @@ class BraTSDataset(Dataset):
                 seg = np.flip(seg, axis)
 
             segs = []
-            # TODO: Wrap in a loop.
-            seg_ncr_net = np.zeros(seg.shape)
-            seg_ncr_net[np.where(seg==1)] = 1
-            segs.append(seg_ncr_net)
 
-            seg_ed = np.zeros(seg.shape)
-            seg_ed[np.where(seg==2)] = 1
-            segs.append(seg_ed)
+            if self.clinical_segs:
+                # enhancing tumor
+                seg_et = np.zeros(seg.shape)
+                seg_et[np.where(seg==4)] = 1
+                segs.append(seg_et)
 
-            seg_et = np.zeros(seg.shape)
-            seg_et[np.where(seg==4)] = 1
-            segs.append(seg_et)
-            target = torch.from_numpy(np.stack(segs))
+                # whole tumor
+                seg_wt = np.zeros(seg.shape)
+                seg_wt[np.where(seg > 0)] = 1
+                segs.append(seg_wt)
+               
+                # tumor core
+                seg_tc = np.zeros(seg.shape)
+                seg_tc[np.where(seg==1) or np.where(seg==4)] = 1
+                segs.append(seg_tc)
 
-        if '_t1' in self.modes[0][idx] and not self.segs:
-            target = self.modes[0][idx].replace('_t1', '')
+                target = torch.from_numpy(np.stack(segs))
+            else:
+                # necrotic/non-enhancing tumor
+                seg_ncr_net = np.zeros(seg.shape)
+                seg_ncr_net[np.where(seg==1)] = 1
+                segs.append(seg_ncr_net)
+                
+                # edema
+                seg_ed = np.zeros(seg.shape)
+                seg_ed[np.where(seg==2)] = 1
+                segs.append(seg_ed)
+                
+                # enhancing tumor
+                seg_et = np.zeros(seg.shape)
+                seg_et[np.where(seg==4)] = 1
+                segs.append(seg_et)
+                target = torch.from_numpy(np.stack(segs))
+
         if DEBUG:
             self.src = src
             self.target = target
+
         return src, target
+        ## this has to be on for outputing segmentations
+        #  otherwise the metadata won't be correct
+        #return {'patient': _patient(self.modes[0][idx]), 
+        #        'data': src, 
+        #        'seg': target, 
+        #        # this should be done in preprocessing or something not here
+        #        'qoffsets': [
+        #            header['qoffset_x'],
+        #            header['qoffset_y'],
+        #            header['qoffset_z']
+        #            ],
+        #        'srows': [
+        #            header['srow_x'],
+        #            header['srow_y'],
+        #            header['srow_z'],
+        #            ],
+        #        'file': [self.modes[0][idx]]
+        #        }
+
+#### SUBCLASS VALIDATION TRAIN

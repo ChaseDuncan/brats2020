@@ -10,9 +10,6 @@ def agg_dice_score(preds, targets):
   ''' Gives Dice score for sub-regions which are evaluated in the
   competition.
   '''
-  if isinstance(preds, tuple):
-    preds = preds[0]
-
   channel_shape = preds[:, 0, :, :, :].size()
 
   agg = torch.zeros(preds.size())
@@ -51,11 +48,6 @@ def agg_dice_score(preds, targets):
   return dice_score(agg_preds, agg_targets)
 
 def dice_score(preds, targets):
-    # in the case where VAE regularization is used, the preds are a tuple
-    # because we also store the reconstructed image. this should be replaced
-    # with a list which would obviate the need for the conditional.
-    if isinstance(preds, tuple):
-      preds = preds[0]
     num = 2*torch.einsum('bcijk, bcijk ->bc', [preds, targets])
     denom = torch.einsum('bcijk, bcijk -> bc', [preds, preds]) +\
         torch.einsum('bcijk, bcijk -> bc', [targets, targets]) + 1e-32
@@ -98,14 +90,26 @@ class AvgDiceLoss(nn.Module):
     avg_dice = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
     return 1 - avg_dice
 
+class CascadeAvgDiceLoss(nn.Module):
+    def __init__(self):
+        super(CascadeAvgDiceLoss, self).__init__()
+        self.coarse_loss = AvgDiceLoss()
+        self.deconv_loss = AvgDiceLoss()
+        self.biline_loss = AvgDiceLoss()
+
+    def forward(self, output, targets):
+        return 0.33*(self.coarse_loss(output['coarse'], targets)\
+                + self.biline_loss(output['biline'], targets)\
+                + self.deconv_loss(output['deconv'], targets))
+
 class DiceLoss(nn.Module):
   def __init__(self):
     super(DiceLoss, self).__init__()
 
   def forward(self, preds, targets):
     target = targets['target']
-    num_channels = target.size()[1]
-    return  num_channels - torch.einsum('c->', dice_score(preds, target))
+    proportions = dice_score(preds, target)
+    return -torch.einsum('c->', proportions) / target.shape[0]
 
 class ReconRegLoss(nn.Module):
   def __init__(self):

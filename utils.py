@@ -15,9 +15,9 @@ import torch.utils.data.sampler as sampler
 from tqdm import tqdm
 
 def get_free_gpu():
-    os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > /tmp/.tmp')
+    os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
     memory_available = [int(x.split()[2]) for x in open('.tmp', 'r').readlines()]
-    os.system('rm /tmp/.tmp')
+    os.system('rm .tmp')
     return np.argmax(memory_available)
 
 def save_checkpoint(dir, epoch, name='checkpoint', **kwargs):
@@ -63,6 +63,34 @@ def save_prediction(src, target, preds, outdir, filename):
     wt_pred = preds[2, :, :, :]
     pred_img = nib.Nifti1Image(wt_pred, np.eye(4))
     nib.save(pred_img, os.path.join(outdir, filename+'.wt_pd.nii.gz'))
+
+
+class MRISegConfigParser():
+  def __init__(self, config_file):
+    config = ConfigParser()
+    config.read(config_file)
+    self.debug = False 
+    self.label_recon = False 
+
+    if config.has_option('data', 'debug'):
+      self.debug = config.getboolean('data', 'debug')
+
+    self.deterministic_train = \
+        config.getboolean('train_params', 'deterministic_train')
+    self.train_split = config.getfloat('train_params', 'train_split')
+    self.weight_decay = config.getfloat('train_params', 'weight_decay')
+    self.epochs = config.getint('train_params', 'epochs')
+    self.data_dir = config.get('data', 'data_dir')
+    self.log_dir = config.get('data', 'log_dir')
+    self.model_type = config.get('meta', 'model_type')
+    self.model_name = config.get('meta', 'model_name')
+    self.modes = json.loads(config.get('data', 'modes'))
+    self.loss = config.get('meta', 'loss')
+
+    if config.has_option('data', 'dims'):
+      self.dims = json.loads(config.get('data', 'dims'))
+    if config.has_option('meta', 'label_recon'):
+      self.label_recon = config.get_boolean('meta', 'label_recon')
 
 
 # TODO: clean this up vis a vis checkpoints vs saving model, etc.
@@ -141,9 +169,25 @@ def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
 
         cur_loss.backward()
         optimizer.step()
-    
 
-def _validate(model, loss, val_gen, batches_per_epoch, device,  test):
+def train(model, loss, optimizer, train_dataloader, device):
+    total_loss = 0
+    model.train()
+    for src, target in tqdm(train_dataloader):
+        optimizer.zero_grad()
+        src, target = src.to(device, dtype=torch.float),\
+            target.to(device, dtype=torch.float)
+        output = model(src)
+        cur_loss = loss(output, {'target':target, 'src':src})
+        total_loss += cur_loss
+        cur_loss.backward()
+        optimizer.step()
+   
+# currently unused. for validation when using batchgenerator.
+# batchgenerator produces examples forever so the loop has
+# and additional variable for tracking how much of the set
+# has been annotated. 
+def _validate_bg(model, loss, val_gen, batches_per_epoch, device):
     total_loss = 0
     total_dice = 0
     total_dice_agg = 0
@@ -160,19 +204,53 @@ def _validate(model, loss, val_gen, batches_per_epoch, device,  test):
             total_loss += loss(output, {'target':target, 'src':src}) 
             total_dice += dice_score(output, target)
             total_dice_agg += agg_dice_score(output, target)
-    
     avg_dice = total_dice / total_examples
     avg_dice_agg = total_dice_agg / total_examples 
     avg_loss = total_loss / total_examples 
     return avg_dice, avg_dice_agg, avg_loss
 
+
+def _validate(model, loss, dataloader, device):
+    total_loss = 0
+    total_dice = 0
+    total_dice_agg = 0
+    total_examples = 0
+
+    with torch.no_grad():
+        model.eval()
+
+        for src, target in tqdm(dataloader):
+            src, target = src.to(device, dtype=torch.float),\
+                target.to(device, dtype=torch.float)
+            total_examples+=src.size()[0]
+            output = model(src)
+            total_loss += loss(output, {'target':target, 'src':src}) 
+            total_dice += dice_score(output, target)
+            total_dice_agg += agg_dice_score(output, target)
+            ####### 
+            # CascadeNet
+            #
+            #average_seg = 0.5*(output['deconv'] + output['biline'])
+            #total_dice += dice_score(average_seg, target)
+            #total_dice_agg += agg_dice_score(average_seg, target)
+
+    avg_dice = total_dice / total_examples
+    avg_dice_agg = total_dice_agg / total_examples 
+    avg_loss = total_loss / total_examples 
+    return avg_dice, avg_dice_agg, avg_loss
+        
+
 # TODO: probably get rid of testloader
 def validate(model, loss, trainloader, batches_per_epoch, device, testloader=None):
-  train_dice, train_dice_agg, train_loss =\
-      _validate(model, loss, trainloader, batches_per_epoch, device, False)
+train_dice, train_dice_agg, train_loss =\
+      _validate(model, loss, trainloader, device)
   test_dice = None
   test_dice_agg = None
   test_loss = None
+
+  if testloader:
+    test_dice, test_dice_agg, test_loss =\
+        _validate(model, loss, testloader, device, True)
 
   return {'train_dice':train_dice, 'train_dice_agg':train_dice_agg, 
           'train_loss':train_loss, 'test_dice':test_dice, 

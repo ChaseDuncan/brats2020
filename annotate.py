@@ -8,7 +8,6 @@ import numpy as np
 import argparse
 from torch.utils.data import DataLoader
 from data_loader import BraTSDataset
-from utils import MRISegConfigParser
 import os
 import nibabel as nib
 

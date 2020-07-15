@@ -23,8 +23,6 @@ class BraTSValidation(Dataset):
         metadata['patient_id'] = patient_id
         return data, metadata
 
-DEBUG=False
-#DEBUG=True
 
 def get_list_of_patients(preprocessed_data_folder):
     npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
@@ -41,8 +39,6 @@ def load_patient(patient):
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
         dims=[240, 240, 155], augment_data = False):
-
-        self.clinical_segs = clinical_segs
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0
@@ -130,6 +126,7 @@ class BraTSDataset(Dataset):
         d = torch.from_numpy(d)
         d = (d - d.min()) / (d.max() - d.min())
         return d
+
     @abstractmethod
     def __getitem__(self, idx):
         pass
@@ -137,28 +134,21 @@ class BraTSDataset(Dataset):
 class BraTSTrainDataset(BraTSDataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
         dims=[240, 240, 155], augment_data = False, clinical_segs=True):
-        super.__init__(self, data_dir, modes, dims, augment_data, clinical_segs)
+        BraTSDataset.__init__(self, data_dir, modes, dims, augment_data)
+        self.clinical_segs = clinical_segs
+
+    def _load_images(self, idx):
+        images = []
+        for m in self.modes:
+            image = nib.load(m[idx])
+            images.append(image)
+
+            header = image.header
+        return images, header
 
     def __getitem__(self, idx):
-        if DEBUG and self.src != None and self.target != None:
-            return self.src, self.target
-        elif DEBUG:
-            idx=0
-
-        def _patient(f):
-            return f.split('/')[-2]
-
-        def _load_images(idx):
-            images = []
-            for m in self.modes:
-                image = nib.load(m[idx])
-                images.append(image)
-
-                header = image.header
-            return images, header
-        
         # header data should be handled in preprocessing, not here
-        images, header = _load_images(idx) 
+        images, header = self._load_images(idx) 
         data = [self._transform_data(img) for img in images]
         src = torch.stack(data)
 
@@ -220,10 +210,6 @@ class BraTSTrainDataset(BraTSDataset):
                 segs.append(seg_et)
                 target = torch.from_numpy(np.stack(segs))
 
-        if DEBUG:
-            self.src = src
-            self.target = target
-
         return src, target
         ## this has to be on for outputing segmentations
         #  otherwise the metadata won't be correct
@@ -243,5 +229,9 @@ class BraTSTrainDataset(BraTSDataset):
         #            ],
         #        'file': [self.modes[0][idx]]
         #        }
+        #    def _patient(self, f):
+        #return f.split('/')[-2]
+
+
 
 #### SUBCLASS VALIDATION TRAIN

@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
 from models import *
-from data_loader import BraTSDataset
+from data_loader import BraTSTrainDataset
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
 
@@ -36,7 +36,10 @@ parser.add_argument('--data_dir', type=str, required=True, metavar='PATH TO DATA
     help='Path to where the data is located.')
 
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
-                        help='model name (default: None)')
+                        help='model class (default: None)')
+
+parser.add_argument('--device', type=int, required=True, metavar='N',
+    help='Which device to use for training.')
 
 parser.add_argument('--upsampling', type=str, default='bilinear', 
     choices=['bilinear', 'deconv'], 
@@ -82,7 +85,7 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-device = torch.device('cuda:1')
+device = torch.device(f'cuda:{args.device}')
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
@@ -105,9 +108,9 @@ trainloader = DataLoader(brats_data, batch_size=args.batch_size,
                         shuffle=True, num_workers=args.num_workers)
 
 
-if args.model_name == 'MonoUNet':
+if args.model == 'MonoUNet':
     model = MonoUNet()
-if args.model_name == 'CascadeNet':
+if args.model == 'CascadeNet':
     model = CascadeNet()
 
 model = model.to(device)

@@ -13,6 +13,8 @@ from losses import (
     )
 import torch.utils.data.sampler as sampler
 from tqdm import tqdm
+import models
+import cascade_net
 
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
@@ -199,13 +201,13 @@ def _validate(model, loss, dataloader, device):
                 target.to(device, dtype=torch.float)
             total_examples+=src.size()[0]
             output = model(src)
-            if isinstance(model, MonoUNet): 
+            if isinstance(model, models.MonoUNet): 
                 total_loss += loss(output, {'target':target, 'src':src}) 
                 total_dice += dice_score(output, target)
                 total_dice_agg += agg_dice_score(output, target)
             ####### 
             # CascadeNet
-            if isinstance(model, CascadeNet):
+            if isinstance(model, cascade_net.CascadeNet):
                 average_seg = 0.5*(output['deconv'] + output['biline'])
                 total_dice += dice_score(average_seg, target)
                 total_dice_agg += agg_dice_score(average_seg, target)

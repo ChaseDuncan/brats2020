@@ -37,8 +37,7 @@ def load_patient(patient):
     return data, metadata
 
 class BraTSDataset(Dataset):
-    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-        dims=[240, 240, 155], augment_data = False):
+    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], dims=[240, 240, 155]):
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0
@@ -56,41 +55,11 @@ class BraTSDataset(Dataset):
 
         self.segs = sorted([ f for f in filenames if "seg.nii.gz" in f ])
 
-        self.augment_data = augment_data
-        # randomly flip along axis
-        self.axis = None
-        if self.augment_data and np.random.uniform() > 0.5:
-            self.axis = np.random.choice([0, 1, 2], 1)[0]
-
-        # for debugging
-        self.src = None
-        self.target = None
-
 
     def __len__(self):
         # return size of dataset
         return max([len(self.modes[i]) for i in range(len(self.modes))])
 
-
-    def data_aug(self, brain):
-        if self.axis:
-            brain = np.flip(brain, self.axis).copy()
-        shift_brain = brain + torch.Tensor(np.random.uniform(-0.1, 0.1, brain.shape)).double()
-        scale_brain = shift_brain*torch.Tensor(np.random.uniform(0.9, 1.1, brain.shape)).double()
-        return scale_brain
-
-
-    # TODO: mask brain
-    # changing data type in the function is stupid
-    def std_normalize(self, d):
-      ''' Subtract mean and divide by standard deviation of the image.'''
-      d = torch.from_numpy(d)
-      d_mean = torch.mean(d)
-      means = [d_mean]*d.shape[0]
-      d_std = torch.std(d)
-      stds = [d_std]*d.shape[0]
-      d_trans = TF.normalize(d, means, stds).cuda()
-      return d_trans
 
     def _transform_data(self, d):
         img = d.get_fdata()
@@ -114,18 +83,14 @@ class BraTSDataset(Dataset):
               self.z_off:img.shape[2]-self.z_off]
 
         img_trans = self.min_max_normalize(img)
-        #img_trans = self.std_normalize(img)
 
-        if self.augment_data:
-            img_trans = self.data_aug(img_trans)
         return img_trans
 
 
     def min_max_normalize(self, d):
-        # TODO: changing data type in the function is stupid
-        d = torch.from_numpy(d)
-        d = (d - d.min()) / (d.max() - d.min())
+        d = (d - np.min(d)) / (np.max(d) - np.min(d))
         return d
+
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -133,9 +98,20 @@ class BraTSDataset(Dataset):
 
 class BraTSTrainDataset(BraTSDataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-        dims=[240, 240, 155], augment_data = False, clinical_segs=True):
-        BraTSDataset.__init__(self, data_dir, modes, dims, augment_data)
+        dims=[240, 240, 155], augment_data = True, clinical_segs=True):
+        BraTSDataset.__init__(self, data_dir, modes, dims)
         self.clinical_segs = clinical_segs
+
+        self.augment_data = augment_data
+
+        # randomly mirror along axis
+        self.mirror = False
+        self.axis = np.random.choice([0, 1, 2], 1)[0]
+
+    def data_aug(self, brain):
+        shift_brain = brain + np.random.uniform(-0.1, 0.1, brain.shape)
+        scale_brain = shift_brain*np.random.uniform(0.9, 1.1, brain.shape)
+        return scale_brain
 
     def _load_images(self, idx):
         images = []
@@ -145,11 +121,22 @@ class BraTSTrainDataset(BraTSDataset):
 
             header = image.header
         return images, header
+    
+
+    def _transform_data(self, d):
+        img_trans = BraTSDataset._transform_data(self, d)
+        self.mirror=False
+        if self.augment_data:
+            img_trans = self.data_aug(img_trans)
+            if np.random.uniform() > 0.5:
+                img_trans = np.flip(img_trans, self.axis).copy()
+                self.mirror=True
+        return img_trans
 
     def __getitem__(self, idx):
         # header data should be handled in preprocessing, not here
         images, header = self._load_images(idx) 
-        data = [self._transform_data(img) for img in images]
+        data = [torch.from_numpy(self._transform_data(img)) for img in images]
         src = torch.stack(data)
 
         target = []
@@ -171,8 +158,8 @@ class BraTSTrainDataset(BraTSDataset):
               self.y_off:seg.shape[1]-self.y_off,
               self.z_off:seg.shape[2]-self.z_off]
 
-            if self.axis:
-                seg = np.flip(seg, axis)
+            if self.augment_data and self.mirror:
+                seg = np.flip(seg, self.axis)
 
             segs = []
 
@@ -209,7 +196,6 @@ class BraTSTrainDataset(BraTSDataset):
                 seg_et[np.where(seg==4)] = 1
                 segs.append(seg_et)
                 target = torch.from_numpy(np.stack(segs))
-
         return src, target
         ## this has to be on for outputing segmentations
         #  otherwise the metadata won't be correct

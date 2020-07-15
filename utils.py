@@ -199,15 +199,16 @@ def _validate(model, loss, dataloader, device):
                 target.to(device, dtype=torch.float)
             total_examples+=src.size()[0]
             output = model(src)
-            total_loss += loss(output, {'target':target, 'src':src}) 
-            total_dice += dice_score(output, target)
-            total_dice_agg += agg_dice_score(output, target)
+            if isinstance(model, MonoUNet): 
+                total_loss += loss(output, {'target':target, 'src':src}) 
+                total_dice += dice_score(output, target)
+                total_dice_agg += agg_dice_score(output, target)
             ####### 
             # CascadeNet
-            #
-            #average_seg = 0.5*(output['deconv'] + output['biline'])
-            #total_dice += dice_score(average_seg, target)
-            #total_dice_agg += agg_dice_score(average_seg, target)
+            if isinstance(model, CascadeNet):
+                average_seg = 0.5*(output['deconv'] + output['biline'])
+                total_dice += dice_score(average_seg, target)
+                total_dice_agg += agg_dice_score(average_seg, target)
 
     avg_dice = total_dice / total_examples
     avg_dice_agg = total_dice_agg / total_examples 

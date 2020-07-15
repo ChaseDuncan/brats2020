@@ -107,7 +107,6 @@ brats_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
 trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
                         shuffle=True, num_workers=args.num_workers)
 
-
 if args.model == 'MonoUNet':
     model = MonoUNet()
 if args.model == 'CascadeNet':

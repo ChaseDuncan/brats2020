@@ -137,7 +137,7 @@ for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
 
-    #train(model, loss, optimizer, trainloader, device)
+    train(model, loss, optimizer, trainloader, device)
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(

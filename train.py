@@ -131,7 +131,10 @@ columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
 
 #writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = PolynomialLR(optimizer, args.epochs)
-loss = losses.CascadeAvgDiceLoss()
+
+# parameterize
+#loss = losses.CascadeAvgDiceLoss()
+loss = losses.AvgDiceLoss()
 
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()

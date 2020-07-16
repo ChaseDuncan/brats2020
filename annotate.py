@@ -14,7 +14,7 @@ import nibabel as nib
 device = torch.device('cuda:1')
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
-parser.add_argement('--model_dir' type=str, required=True)
+parser.add_argement('--model_dir', type=str, required=True)
 parser.add_argument('--data_dir', type=str,
         default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData')
 args = parser.parse_args()

@@ -7,19 +7,20 @@ import numpy as np
 
 import argparse
 from torch.utils.data import DataLoader
-from data_loader import BraTSDataset
-from utils import MRISegConfigParser
+from data_loader import BraTSAnnotationDataset
 import os
 import nibabel as nib
 
 device = torch.device('cuda:1')
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
-parser.add_argument('--data')
+parser.add_argument('--data_dir', type=str,
+        default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData')
 args = parser.parse_args()
-
-checkpoint_file='data/models/mono-oldpipe-2020/checkpoints/checkpoint-100.pt'
-annotations_dir = 'annotations/mono-oldpipe-2020/'
+#checkpoint_file='data/models/mono-oldpipe-2020/checkpoints/checkpoint-100.pt'
+for p, _, files in os.walk(f'{args.data_dir}/checkpoints/'):
+    checkpoint_file = os.path.join(p, files[-1])
+annotations_dir = f'{args.data_dir}/annotations'
 os.makedirs(annotations_dir, exist_ok=True)
 
 checkpoint = torch.load(checkpoint_file)
@@ -27,9 +28,9 @@ model = MonoUNet()
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 model = model.to(device)
 
-brats_data = BraTSDataset('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData', 
+brats_data = BraTSAnnotationDataset('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData', 
         dims=[160, 192, 128])
-dataloader = DataLoader(brats_data, batch_size=1, num_workers=0)
+dataloader = DataLoader(brats_data)
 
 with torch.no_grad():
     model.eval()
@@ -48,7 +49,6 @@ with torch.no_grad():
         wt = m(output[0, 1, :, :, :])
         tc = m(output[0, 2, :, :, :])
         
-        <<< HEAD
         label = torch.zeros((240, 240, 155))
 
         label[torch.where(wt > 0.5)] = 2
@@ -59,8 +59,4 @@ with torch.no_grad():
         aff = orig_header.get_qform()
         img = nib.Nifti1Image(label.numpy(), aff, header=orig_header)
         img.to_filename(os.path.join(annotations_dir, f'{d["patient"][0]}.nii.gz'))
-
-        # for batchgenerator preprocessed data
-        #output_file = os.path.join(annotation_dir, f'{metadata["patient_id"][0]}.nii.gz')
-        #BraTS2018DataLoader3D.save_segmentation_as_nifti(label, metadata, output_file)
 

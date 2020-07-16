@@ -48,9 +48,13 @@ def agg_dice_score(preds, targets):
   return dice_score(agg_preds, agg_targets)
 
 def dice_score(preds, targets):
-    num = 2*torch.einsum('bcijk, bcijk ->bc', [preds, targets])
-    denom = torch.einsum('bcijk, bcijk -> bc', [preds, preds]) +\
-        torch.einsum('bcijk, bcijk -> bc', [targets, targets]) + 1e-32
+    # have to cast to float because of issues with amp
+    targets_fp = targets.float()
+    preds_fp = preds.float()
+
+    num = 2*torch.einsum('bcijk, bcijk ->bc', [preds_fp, targets_fp])
+    denom = torch.einsum('bcijk, bcijk -> bc', [preds_fp, preds_fp]) +\
+        torch.einsum('bcijk, bcijk -> bc', [targets_fp, targets_fp]) + 1e-32
     proportions = torch.div(num, denom) 
     return torch.einsum('bc->c', proportions)
 
@@ -82,7 +86,6 @@ class VAEDiceLoss(nn.Module):
 class AvgDiceLoss(nn.Module):
   def __init__(self):
     super(AvgDiceLoss, self).__init__()
-  # Need a loss builder so we don't have to have superfluous arguments
 
   def forward(self, preds, targets):
     target = targets['target']

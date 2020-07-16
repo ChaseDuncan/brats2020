@@ -18,12 +18,15 @@ from utils import (
     validate,
     )
 
-from .models.cascade_net import CascadeNet
+from models.cascade_net import CascadeNet
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
-from .models.models import *
+from models.models import *
 from data_loader import BraTSTrainDataset
+
+#from apex import amp
+from apex_dummy import amp
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
 
@@ -51,6 +54,9 @@ parser.add_argument('--loss', type=str, default='avgdice',
 
 parser.add_argument('--data_par', action='store_true', 
     help='data parellelism flag (default: off)')
+
+parser.add_argument('--mixed_precision', action='store_true', 
+    help='mixed precision flag (default: off)')
 
 parser.add_argument('--seed', type=int, default=1, metavar='S', 
     help='random seed (default: 1)')
@@ -112,8 +118,6 @@ if args.model == 'MonoUNet':
 if args.model == 'CascadeNet':
     model = CascadeNet()
 
-model = model.to(device)
-
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
 
@@ -125,12 +129,22 @@ if args.resume:
   model.load_state_dict(checkpoint["state_dict"])
   optimizer.load_state_dict(checkpoint["optimizer"])    
 
+# get this on line, cmon
+#writer = SummaryWriter(log_dir=f'{args.dir}/logs')
+
+# this must occur before giving the optimizer to amp
+scheduler = PolynomialLR(optimizer, args.epochs)
+
+# model has to be on device before passing to amp
+model = model.to(device)
+if args.mixed_precision:
+    # Allow Amp to perform casts as required by the opt_level
+    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+
 # TODO: optimizer factory, allow for SGD with momentum etx.
 columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
 
-#writer = SummaryWriter(log_dir=f'{args.dir}/logs')
-scheduler = PolynomialLR(optimizer, args.epochs)
 
 # parameterize
 #loss = losses.CascadeAvgDiceLoss()
@@ -140,7 +154,12 @@ for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
 
-    train(model, loss, optimizer, trainloader, device)
+    train(model, 
+            loss, 
+            optimizer, 
+            trainloader, 
+            device, 
+            mixed_precision=args.mixed_precision)
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(

@@ -24,7 +24,9 @@ from scheduler import PolynomialLR
 import losses
 from models.models import *
 from data_loader import BraTSTrainDataset
-from apex import amp
+
+#from apex import amp
+from apex_dummy import amp
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
 
@@ -127,17 +129,22 @@ if args.resume:
   model.load_state_dict(checkpoint["state_dict"])
   optimizer.load_state_dict(checkpoint["optimizer"])    
 
+# get this on line, cmon
+#writer = SummaryWriter(log_dir=f'{args.dir}/logs')
+
+# this must occur before giving the optimizer to amp
+scheduler = PolynomialLR(optimizer, args.epochs)
+
+# model has to be on device before passing to amp
+model = model.to(device)
 if args.mixed_precision:
     # Allow Amp to perform casts as required by the opt_level
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
-model = model.to(device)
 # TODO: optimizer factory, allow for SGD with momentum etx.
 columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
 
-#writer = SummaryWriter(log_dir=f'{args.dir}/logs')
-scheduler = PolynomialLR(optimizer, args.epochs)
 
 # parameterize
 #loss = losses.CascadeAvgDiceLoss()

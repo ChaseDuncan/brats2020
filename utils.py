@@ -13,8 +13,12 @@ from losses import (
     )
 import torch.utils.data.sampler as sampler
 from tqdm import tqdm
-import models.models
-import models.cascade_net
+from models import (
+        models,
+        cascade_net
+        )
+#from apex import amp
+from apex_dummy import amp
 
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
@@ -147,6 +151,7 @@ def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
         cur_loss.backward()
         optimizer.step()
 
+# all the training and validation functions need to get out of here
 def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False):
     total_loss = 0
     model.train()
@@ -158,7 +163,7 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         cur_loss = loss(output, {'target':target, 'src':src})
         total_loss += cur_loss
         if mixed_precision:
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
+            with amp.scale_loss(cur_loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
             cur_loss.backward()

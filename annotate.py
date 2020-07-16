@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-from .models.models import *
+from models.models import *
 from tqdm import tqdm
 import numpy as np
 
@@ -11,16 +11,23 @@ from data_loader import BraTSAnnotationDataset
 import os
 import nibabel as nib
 
-device = torch.device('cuda:1')
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
-parser.add_argement('--model_dir', type=str, required=True)
+parser.add_argument('--model_dir', type=str, required=True)
 parser.add_argument('--data_dir', type=str,
         default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData')
+parser.add_argument('--device', type=int, default=-1, metavar='N',
+        help='Which device to use for annotation. (default: cpu)')
 args = parser.parse_args()
+
+if args.device > 0:
+    device = torch.device(f'cuda:{args.device}')
+else:
+    device = torch.device('cpu')
 
 for p, _, files in os.walk(f'{args.model_dir}/checkpoints/'):
     checkpoint_file = os.path.join(p, files[-1])
+
 annotations_dir = f'{args.model_dir}/annotations'
 os.makedirs(annotations_dir, exist_ok=True)
 

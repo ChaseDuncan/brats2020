@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from model_utils import *
+from .model_utils import *
 
 class SimpleResNetBlock(nn.Module):
     def __init__(self, channels, num_groups=32):

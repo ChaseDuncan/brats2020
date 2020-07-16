@@ -18,11 +18,11 @@ from utils import (
     validate,
     )
 
-from cascade_net import CascadeNet
+from .models.cascade_net import CascadeNet
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
-from models import *
+from .models.models import *
 from data_loader import BraTSDataset
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')

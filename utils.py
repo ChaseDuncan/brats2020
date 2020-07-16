@@ -13,8 +13,8 @@ from losses import (
     )
 import torch.utils.data.sampler as sampler
 from tqdm import tqdm
-import models
-import cascade_net
+import .models.models
+import .models.cascade_net
 
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')

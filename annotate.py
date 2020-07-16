@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-from models import *
+from .models.models import *
 from tqdm import tqdm
 import numpy as np
 

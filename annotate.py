@@ -14,13 +14,14 @@ import nibabel as nib
 device = torch.device('cuda:1')
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
+parser.add_argement('--model_dir' type=str, required=True)
 parser.add_argument('--data_dir', type=str,
         default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData')
 args = parser.parse_args()
-#checkpoint_file='data/models/mono-oldpipe-2020/checkpoints/checkpoint-100.pt'
-for p, _, files in os.walk(f'{args.data_dir}/checkpoints/'):
+
+for p, _, files in os.walk(f'{args.model_dir}/checkpoints/'):
     checkpoint_file = os.path.join(p, files[-1])
-annotations_dir = f'{args.data_dir}/annotations'
+annotations_dir = f'{args.model_dir}/annotations'
 os.makedirs(annotations_dir, exist_ok=True)
 
 checkpoint = torch.load(checkpoint_file)
@@ -28,7 +29,7 @@ model = MonoUNet()
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 model = model.to(device)
 
-brats_data = BraTSAnnotationDataset('/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData', 
+brats_data = BraTSAnnotationDataset(args.data_dir, 
         dims=[160, 192, 128])
 dataloader = DataLoader(brats_data)
 

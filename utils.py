@@ -13,8 +13,8 @@ from losses import (
     )
 import torch.utils.data.sampler as sampler
 from tqdm import tqdm
-import .models.models
-import .models.cascade_net
+import models.models
+import models.cascade_net
 
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
@@ -147,7 +147,7 @@ def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
         cur_loss.backward()
         optimizer.step()
 
-def train(model, loss, optimizer, train_dataloader, device):
+def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False):
     total_loss = 0
     model.train()
     for src, target in tqdm(train_dataloader):
@@ -157,8 +157,12 @@ def train(model, loss, optimizer, train_dataloader, device):
         output = model(src)
         cur_loss = loss(output, {'target':target, 'src':src})
         total_loss += cur_loss
-        cur_loss.backward()
-        optimizer.step()
+        if mixed_precision:
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            cur_loss.backward()
+            optimizer.step()
    
 # currently unused. for validation when using batchgenerator.
 # batchgenerator produces examples forever so the loop has

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from model_utils import *
+from models.model_utils import *
 
 
 class CoarseEncoder(nn.Module):

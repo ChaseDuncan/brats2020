@@ -188,48 +188,39 @@ def _validate_bg(model, loss, val_gen, batches_per_epoch, device):
 
 
 def _validate(model, loss, dataloader, device):
-    total_loss = 0
-    total_dice = 0
-    total_dice_agg = 0
-    total_examples = 0
+    loss_total = 0
+    dice_total = 0
+    examples_total = 0
 
     with torch.no_grad():
         model.eval()
 
         for src, target in tqdm(dataloader):
+            examples_total+=src.size()[0]
             src, target = src.to(device, dtype=torch.float),\
                 target.to(device, dtype=torch.float)
-            total_examples+=src.size()[0]
             output = model(src)
+
+            loss_total += loss(output, {'target':target, 'src':src}) 
             if isinstance(model, models.MonoUNet): 
-                total_loss += loss(output, {'target':target, 'src':src}) 
-                total_dice += dice_score(output, target)
-                total_dice_agg += agg_dice_score(output, target)
+                dice_total += dice_score(output, target)
+
             ####### 
             # CascadeNet
             if isinstance(model, cascade_net.CascadeNet):
                 average_seg = 0.5*(output['deconv'] + output['biline'])
-                total_dice += dice_score(average_seg, target)
-                total_dice_agg += agg_dice_score(average_seg, target)
+                dice_total += dice_score(average_seg, target)
 
-    avg_dice = total_dice / total_examples
-    avg_dice_agg = total_dice_agg / total_examples 
-    avg_loss = total_loss / total_examples 
-    return avg_dice, avg_dice_agg, avg_loss
+    avg_dice = dice_total / examples_total
+    avg_loss = loss_total / examples_total 
+    return avg_dice, avg_loss
         
 
 def validate(model, loss, data_loader, device):
-    train_dice, train_dice_agg, train_loss =\
+    dice_avg, loss_avg =\
         _validate(model, loss, data_loader, device)
-    test_dice = None
-    test_dice_agg = None
-    test_loss = None
 
-    if testloader:
-      test_dice, test_dice_agg, test_loss =\
-          _validate(model, loss, data_loader, device, True)
-
-    return {'train_dice':train_dice, 'train_dice_agg':train_dice_agg, 
-            'train_loss':train_loss, 'test_dice':test_dice, 
-            'test_dice_agg':test_dice_agg, 'test_loss':test_loss}
+    return {'dice':dice_avg, 
+            'loss':loss_avg
+            }
 

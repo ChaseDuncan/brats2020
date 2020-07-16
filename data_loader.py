@@ -60,6 +60,14 @@ class BraTSDataset(Dataset):
         # return size of dataset
         return max([len(self.modes[i]) for i in range(len(self.modes))])
 
+    def _load_images(self, idx):
+        images = []
+        for m in self.modes:
+            image = nib.load(m[idx])
+            images.append(image)
+            header = image.header
+
+        return images, header
 
     def _transform_data(self, d):
         img = d.get_fdata()
@@ -197,27 +205,37 @@ class BraTSTrainDataset(BraTSDataset):
                 segs.append(seg_et)
                 target = torch.from_numpy(np.stack(segs))
         return src, target
+
+class BraTSAnnotationDataset(BraTSDataset):
+    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
+        dims=[240, 240, 155], augment_data = True, clinical_segs=True):
+        BraTSDataset.__init__(self, data_dir, modes, dims)
+
+    def _patient(self, f):
+        return f.split('/')[-2]
+
+    def __getitem__(self, idx):
+        # header data should be handled in preprocessing, not here
+        images, header = self._load_images(idx) 
+        data = [torch.from_numpy(self._transform_data(img)) for img in images]
+        src = torch.stack(data)
+
         ## this has to be on for outputing segmentations
         #  otherwise the metadata won't be correct
-        #return {'patient': _patient(self.modes[0][idx]), 
-        #        'data': src, 
-        #        'seg': target, 
-        #        # this should be done in preprocessing or something not here
-        #        'qoffsets': [
-        #            header['qoffset_x'],
-        #            header['qoffset_y'],
-        #            header['qoffset_z']
-        #            ],
-        #        'srows': [
-        #            header['srow_x'],
-        #            header['srow_y'],
-        #            header['srow_z'],
-        #            ],
-        #        'file': [self.modes[0][idx]]
-        #        }
-        #    def _patient(self, f):
-        #return f.split('/')[-2]
 
+        return {'patient': self._patient(self.modes[0][idx]), 
+                'data': src, 
+                # this should be done in preprocessing or something not here
+                'qoffsets': [
+                    header['qoffset_x'],
+                    header['qoffset_y'],
+                    header['qoffset_z']
+                    ],
+                'srows': [
+                    header['srow_x'],
+                    header['srow_y'],
+                    header['srow_z'],
+                    ],
+                'file': [self.modes[0][idx]]
+                }
 
-
-#### SUBCLASS VALIDATION TRAIN

@@ -153,8 +153,8 @@ for epoch in range(start_epoch, args.epochs):
         train_val = validate(model, loss, trainloader, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        values = [epoch + 1, train_val['train_loss'].data] \
-          + train_val['train_dice'].tolist()\
+        values = [epoch + 1, train_val['loss'].data] \
+          + train_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
         table = tabulate.tabulate([values], 
                 columns, tablefmt="simple", floatfmt="8.4f")

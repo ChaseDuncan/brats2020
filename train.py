@@ -114,7 +114,7 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
 dims=[160, 192, 128]
 if args.cross_val:
     filenames=[]
-    for (dirpath, dirnames, files) in os.walk(data_dir):
+    for (dirpath, dirnames, files) in os.walk(args.data_dir):
         filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
 
         modes = [sorted([ f for f in filenames if "t1.nii.gz" in f ]),

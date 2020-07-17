@@ -58,6 +58,9 @@ parser.add_argument('--data_par', action='store_true',
 parser.add_argument('--mixed_precision', action='store_true', 
     help='mixed precision flag (default: off)')
 
+parser.add_argument('--cross_val', action='store_true', 
+    help='use train/val split of full dataset (default: off)')
+
 parser.add_argument('--seed', type=int, default=1, metavar='S', 
     help='random seed (default: 1)')
 
@@ -96,10 +99,6 @@ device = torch.device(f'cuda:{args.device}')
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 
-with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
-  f.write(' '.join(sys.argv))
-  f.write('\n')
-
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -108,15 +107,66 @@ torch.manual_seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-dims=[160, 192, 128]
-brats_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
-trainloader = DataLoader(brats_data, batch_size=args.batch_size, 
-                        shuffle=True, num_workers=args.num_workers)
+with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
+  f.write(' '.join(sys.argv))
+  f.write('\n')
 
+dims=[160, 192, 128]
+if args.cross_val:
+    data_dir = '/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_TrainingData/'
+    filenames=[]
+    for (dirpath, dirnames, files) in os.walk(data_dir):
+        filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
+
+        modes = [sorted([ f for f in filenames if "t1.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "t1ce.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "t2.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "flair.nii.gz" in f ]),
+                        sorted([ f for f in filenames if "seg.nii.gz" in f ])
+
+            ]
+    joined_files = list(zip(*modes))
+    random.shuffle(joined_files)
+    split_idx = int(0.9*len(joined_files))
+    train_split, val_split = joined_files[:split_idx], joined_files[split_idx:]
+
+    train_modes = [[], [], [], []]
+    train_segs = []
+
+    for t1, t1ce, t2, flair, seg in train_split:
+        train_modes[0].append(t1)
+        train_modes[1].append(t1ce)
+        train_modes[2].append(t2)
+        train_modes[3].append(flair)
+        train_segs.append(seg)
+
+    val_modes = [[], [], [], []]
+    val_segs = []
+    for t1, t1ce, t2, flair, seg in val_split:
+        val_modes[0].append(t1)
+        val_modes[1].append(t1ce)
+        val_modes[2].append(t2)
+        val_modes[3].append(flair)
+        val_segs.append(seg)
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True,
+            modes=train_modes, segs=train_segs)
+    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+
+    val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False,
+            modes=val_modes, segs=val_segs)
+    valloader = DataLoader(val_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+else:
+    # train without cross_val
+    pass
+     
 if args.model == 'MonoUNet':
     model = MonoUNet()
+    loss = losses.AvgDiceLoss()
 if args.model == 'CascadeNet':
     model = CascadeNet()
+    loss = losses.CascadeAvgDiceLoss()
 
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -145,11 +195,6 @@ if args.mixed_precision:
 columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
 
-
-# parameterize
-#loss = losses.CascadeAvgDiceLoss()
-loss = losses.AvgDiceLoss()
-
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
@@ -172,7 +217,7 @@ for epoch in range(start_epoch, args.epochs):
     if (epoch + 1) % args.eval_freq == 0:
         # Evaluate on training data
         model.eval()
-        train_val = validate(model, loss, trainloader, device)
+        train_val = validate(model, loss, valloader, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
         values = [epoch + 1, train_val['loss'].data] \

@@ -105,8 +105,11 @@ class BraTSDataset(Dataset):
         pass
 
 class BraTSTrainDataset(BraTSDataset):
-    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-        dims=[240, 240, 155], augment_data = True, clinical_segs=True):
+    def __init__(self, data_dir, 
+        dims=[240, 240, 155], 
+        augment_data = True, 
+        clinical_segs=True,
+        modes=None, segs=None):
         BraTSDataset.__init__(self, data_dir, modes, dims)
         self.clinical_segs = clinical_segs
 
@@ -115,6 +118,10 @@ class BraTSTrainDataset(BraTSDataset):
         # randomly mirror along axis
         self.mirror = False
         self.axis = np.random.choice([0, 1, 2], 1)[0]
+        if modes:
+            self.modes = modes
+        if segs:
+            self.segs = segs
 
     def data_aug(self, brain):
         shift_brain = brain + np.random.uniform(-0.1, 0.1, brain.shape)

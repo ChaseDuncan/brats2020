@@ -113,7 +113,6 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
 
 dims=[160, 192, 128]
 if args.cross_val:
-    data_dir = '/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_TrainingData/'
     filenames=[]
     for (dirpath, dirnames, files) in os.walk(data_dir):
         filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]

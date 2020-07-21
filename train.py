@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
-#from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import pickle
 import argparse
 import random
@@ -177,7 +177,7 @@ if args.resume:
   optimizer.load_state_dict(checkpoint["optimizer"])    
 
 # get this on line, cmon
-#writer = SummaryWriter(log_dir=f'{args.dir}/logs')
+writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 
 # this must occur before giving the optimizer to amp
 scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
@@ -188,7 +188,7 @@ if args.mixed_precision:
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
 # TODO: optimizer factory, allow for SGD with momentum etx.
-columns = ['ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
+columns = ['set', 'ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
 
 for epoch in range(start_epoch, args.epochs):
@@ -213,24 +213,33 @@ for epoch in range(start_epoch, args.epochs):
     if (epoch + 1) % args.eval_freq == 0:
         # Evaluate on training data
         model.eval()
-        train_val = validate(model, loss, valloader, device)
+        train_val = validate(model, loss, trainloader, device)
+        eval_val = validate(model, loss, valloader, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        values = [epoch + 1, train_val['loss'].data] \
+        train_values = ['train', epoch + 1, train_val['loss'].data] \
           + train_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
-        table = tabulate.tabulate([values], 
+        eval_values = ['eval', epoch + 1, eval_val['loss'].data] \
+          + eval_val['dice'].tolist()\
+          + [ time_ep, memory_usage] 
+
+        table = tabulate.tabulate([eval_values, train_values], 
                 columns, tablefmt="simple", floatfmt="8.4f")
         print(table)
     
-    # Log validation
-    #writer.add_scalar('Loss/train', train_loss, epoch)
-    #writer.add_scalar('Dice/train/ncr&net', train_dice[0], epoch)
-    #writer.add_scalar('Dice/train/ed', train_dice[1], epoch)
-    #writer.add_scalar('Dice/train/et', train_dice[2], epoch)
-    #writer.add_scalar('Dice/train/et_agg', train_dice_agg[0], epoch)
-    #writer.add_scalar('Dice/train/wt_agg', train_dice_agg[1], epoch)
-    #writer.add_scalar('Dice/train/tc_agg', train_dice_agg[2], epoch)
-    
+        # Log validation
+        writer.add_scalar(f'{args.dir}/logs/loss/train', train_values['loss'], epoch)
+        et, wt, tc = train_values['dice']
+        writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+
+        writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_values['loss'], epoch)
+        et, wt, tc = eval_values['dice']
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+   
     scheduler.step()
 

@@ -1,0 +1,13 @@
+name: frankenstein
+channels:
+  - defaults
+dependencies:
+  - python=3.7
+  - torchvision
+  - pytorch
+  - tabulate
+  - nibabel
+  - tqdm
+  - tensorboard
+prefix: /home/cddunca2/anaconda3/envs/frankenstein
+

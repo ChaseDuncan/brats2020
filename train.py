@@ -229,14 +229,14 @@ for epoch in range(start_epoch, args.epochs):
         print(table)
     
         # Log validation
-        writer.add_scalar(f'{args.dir}/logs/loss/train', train_values['loss'], epoch)
-        et, wt, tc = train_values['dice']
+        writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
+        et, wt, tc = train_val['dice']
         writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
 
-        writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_values['loss'], epoch)
-        et, wt, tc = eval_values['dice']
+        writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
+        et, wt, tc = eval_val['dice']
         writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)

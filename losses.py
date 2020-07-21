@@ -49,13 +49,13 @@ def agg_dice_score(preds, targets):
 
 def dice_score(preds, targets):
     # have to cast to float because of issues with amp
-    targets_fp = targets.float()
     preds_fp = preds.float()
-
+    targets_fp = targets.float()
     num = 2*torch.einsum('bcijk, bcijk ->bc', [preds_fp, targets_fp])
     denom = torch.einsum('bcijk, bcijk -> bc', [preds_fp, preds_fp]) +\
         torch.einsum('bcijk, bcijk -> bc', [targets_fp, targets_fp]) + 1e-32
     proportions = torch.div(num, denom) 
+
     return torch.einsum('bc->c', proportions)
 
 

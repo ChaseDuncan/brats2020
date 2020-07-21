@@ -162,12 +162,14 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         output = model(src)
         cur_loss = loss(output, {'target':target, 'src':src})
         total_loss += cur_loss
-        if mixed_precision:
-            with amp.scale_loss(cur_loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
-        else:
-            cur_loss.backward()
-            optimizer.step()
+        cur_loss.backward()
+        optimizer.step()
+        #if mixed_precision:
+        #    with amp.scale_loss(cur_loss, optimizer) as scaled_loss:
+        #        scaled_loss.backward()
+        #else:
+        #    cur_loss.backward()
+        #    optimizer.step()
    
 # currently unused. for validation when using batchgenerator.
 # batchgenerator produces examples forever so the loop has
@@ -219,7 +221,10 @@ def _validate(model, loss, dataloader, device):
             if isinstance(model, cascade_net.CascadeNet):
                 average_seg = 0.5*(output['deconv'] + output['biline'])
                 dice_total += dice_score(average_seg, target)
-
+    
+    print(f'dice_total: {dice_total}')
+    print(f'loss_total: {loss_total}')
+    print(f'examples_total: {examples_total}')
     avg_dice = dice_total / examples_total
     avg_loss = loss_total / examples_total 
     return avg_dice, avg_loss
@@ -228,7 +233,7 @@ def _validate(model, loss, dataloader, device):
 def validate(model, loss, data_loader, device):
     dice_avg, loss_avg =\
         _validate(model, loss, data_loader, device)
-
+    
     return {'dice':dice_avg, 
             'loss':loss_avg
             }

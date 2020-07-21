@@ -125,33 +125,29 @@ if args.cross_val:
 
             ]
     joined_files = list(zip(*modes))
+
     random.shuffle(joined_files)
-    split_idx = int(0.9*len(joined_files))
+    split_idx = int(0.8*len(joined_files))
     train_split, val_split = joined_files[:split_idx], joined_files[split_idx:]
+    def proc_split(split):
+        modes = [[], [], [], []]
+        segs = []
 
-    train_modes = [[], [], [], []]
-    train_segs = []
+        for t1, t1ce, t2, flair, seg in split:
+            modes[0].append(t1)
+            modes[1].append(t1ce)
+            modes[2].append(t2)
+            modes[3].append(flair)
+            segs.append(seg)
+        return modes, segs
 
-    for t1, t1ce, t2, flair, seg in train_split:
-        train_modes[0].append(t1)
-        train_modes[1].append(t1ce)
-        train_modes[2].append(t2)
-        train_modes[3].append(flair)
-        train_segs.append(seg)
-
-    val_modes = [[], [], [], []]
-    val_segs = []
-    for t1, t1ce, t2, flair, seg in val_split:
-        val_modes[0].append(t1)
-        val_modes[1].append(t1ce)
-        val_modes[2].append(t2)
-        val_modes[3].append(flair)
-        val_segs.append(seg)
+    train_modes, train_segs = proc_split(train_split)
     train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True,
             modes=train_modes, segs=train_segs)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
 
+    val_modes, val_segs = proc_split(val_split)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False,
             modes=val_modes, segs=val_segs)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
@@ -170,6 +166,8 @@ if args.model == 'CascadeNet':
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
 
+model = model.to(device)
+
 start_epoch = 0
 if args.resume:
   print("Resume training from %s" % args.resume)
@@ -182,10 +180,9 @@ if args.resume:
 #writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 
 # this must occur before giving the optimizer to amp
-scheduler = PolynomialLR(optimizer, args.epochs)
+scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
 
 # model has to be on device before passing to amp
-model = model.to(device)
 if args.mixed_precision:
     # Allow Amp to perform casts as required by the opt_level
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")

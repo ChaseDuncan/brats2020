@@ -104,13 +104,13 @@ class Decoder(nn.Module):
     def forward(self, x):
         sp3 = x['spatial_level_3'] + self.up(self.cf1(x['spatial_level_4']))
         sp3 = self.block9(sp3)
-        sp3 = self.block10(sp3)
+        #sp3 = self.block10(sp3)
         sp2 = x['spatial_level_2'] + self.up(self.cf2(sp3))
         sp2 = self.block11(sp2)
-        sp2 = self.block12(sp2)
+        #sp2 = self.block12(sp2)
         sp1 = x['spatial_level_1'] + self.up(self.cf3(sp2))
         sp1 = self.block13(sp1)
-        sp1 = self.block14(sp1)
+        #sp1 = self.block14(sp1)
         output = self.sig(self.cf_final(sp1))
 
         return output

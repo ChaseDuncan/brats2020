@@ -29,7 +29,7 @@ from data_loader import BraTSTrainDataset
 from apex_dummy import amp
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
-
+lr_add_cnst = 0.00045 
 # In this directory is stored the script used to start the training,
 # the most recent and best checkpoints, and a directory of logs.
 parser.add_argument('--dir', type=str, required=True, metavar='PATH',
@@ -94,7 +94,8 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-device = torch.device(f'cuda:{args.device}')
+#device = torch.device(f'cuda:{args.device}')
+device = torch.device('cuda')
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
@@ -111,7 +112,8 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
-dims=[160, 192, 128]
+dims=[128, 128, 128]
+#dims=[160, 192, 128]
 if args.cross_val:
     filenames=[]
     for (dirpath, dirnames, files) in os.walk(args.data_dir):
@@ -190,7 +192,7 @@ if args.mixed_precision:
 # TODO: optimizer factory, allow for SGD with momentum etx.
 columns = ['set', 'ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
-
+lr=0.0
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
@@ -240,6 +242,9 @@ for epoch in range(start_epoch, args.epochs):
         writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
-   
-    scheduler.step()
+    lr += lr_add_cnst   
+    print(f'lr: {lr}')
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    #scheduler.step()
 

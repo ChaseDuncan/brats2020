@@ -90,7 +90,8 @@ class BraTSDataset(Dataset):
               self.y_off:img.shape[1]-self.y_off,
               self.z_off:img.shape[2]-self.z_off]
 
-        img_trans = self.min_max_normalize(img)
+        #img_trans = self.min_max_normalize(img)
+        img_trans = self.standardize(img)
 
         return img_trans
 
@@ -99,6 +100,21 @@ class BraTSDataset(Dataset):
         d = (d - np.min(d)) / (np.max(d) - np.min(d))
         return d
 
+    def standardize(self, d):
+        # H length list of WxD arrays of booleans where
+        # the i, (j, k) is True if d[i, j, k] > 0
+        nonzero_masks = [i != 0 for i in d]
+        brain_mask = np.zeros(d.shape, dtype=bool)
+
+        for i in range(len(nonzero_masks)):
+            brain_mask[i, :, :] = brain_mask[i, :, :] | nonzero_masks[i]
+        
+        mean = d[brain_mask].mean()
+        std = d[brain_mask].std()
+        # now normalize each modality with its mean and standard deviation (computed within the brain mask)
+        stan = (d - mean) / (std + 1e-8)
+        stan[brain_mask == False] = 0
+        return stan
 
     @abstractmethod
     def __getitem__(self, idx):

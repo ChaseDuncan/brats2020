@@ -95,6 +95,7 @@ def load_and_preprocess(case, patient_name, output_folder):
     nonzero_masks = [i != 0 for i in imgs_npy[-1]]
     brain_mask = np.zeros(imgs_npy.shape[1:], dtype=bool)
     for i in range(len(nonzero_masks)):
+        # WARNING THIS IS BROKEN
         brain_mask = brain_mask | nonzero_masks[i]
 
     # This shouldn't be hardcoded but we know all the BraTS stuff has 4 modalities. This will be

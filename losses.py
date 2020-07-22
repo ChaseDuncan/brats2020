@@ -56,7 +56,6 @@ def dice_score(preds, targets):
     denom = torch.einsum('bcijk, bcijk -> bc', [preds_fp, preds_fp]) +\
         torch.einsum('bcijk, bcijk -> bc', [targets_fp, targets_fp]) + 1e-8
     proportions = torch.div(num, denom) 
-    print(f'proportions: {proportions}')
     return torch.einsum('bc->c', proportions)
 
 

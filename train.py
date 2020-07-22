@@ -239,7 +239,7 @@ for epoch in range(start_epoch, args.epochs):
         et, wt, tc = eval_val['dice']
         writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc', tc, epoch)
    
     scheduler.step()
 

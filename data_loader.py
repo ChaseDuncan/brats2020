@@ -7,34 +7,33 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 from abc import abstractmethod
 
-from batchgenerators.utilities.file_and_folder_operations import *
-
-class BraTSValidation(Dataset):
-    def __init__(self, data_dir):
-        self.patients = get_list_of_patients(data_dir)        
-        self.data_dir = data_dir
-        
-    def __len__(self):
-        return len(self.patients)
-    
-    def __getitem__(self, idx):
-        data, metadata = load_patient(os.path.join(self.data_dir, self.patients[idx]))
-        patient_id = self.patients[idx].split('/')[-1]
-        metadata['patient_id'] = patient_id
-        return data, metadata
-
-
-def get_list_of_patients(preprocessed_data_folder):
-    npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
-    # remove npy file extension
-    patients = [i[:-4] for i in npy_files]
-    return patients
-
-
-def load_patient(patient):
-    data = np.load(patient + ".npy")
-    metadata = load_pickle(patient + ".pkl")
-    return data, metadata
+#from batchgenerators.utilities.file_and_folder_operations import *
+#class BraTSValidation(Dataset):
+#    def __init__(self, data_dir):
+#        self.patients = get_list_of_patients(data_dir)        
+#        self.data_dir = data_dir
+#        
+#    def __len__(self):
+#        return len(self.patients)
+#    
+#    def __getitem__(self, idx):
+#        data, metadata = load_patient(os.path.join(self.data_dir, self.patients[idx]))
+#        patient_id = self.patients[idx].split('/')[-1]
+#        metadata['patient_id'] = patient_id
+#        return data, metadata
+#
+#
+#def get_list_of_patients(preprocessed_data_folder):
+#    npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
+#    # remove npy file extension
+#    patients = [i[:-4] for i in npy_files]
+#    return patients
+#
+#
+#def load_patient(patient):
+#    data = np.load(patient + ".npy")
+#    metadata = load_pickle(patient + ".pkl")
+#    return data, metadata
 
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], dims=[240, 240, 155]):

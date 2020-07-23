@@ -20,6 +20,9 @@ from models import (
 #from apex import amp
 from apex_dummy import amp
 
+debug=False
+# Uncomment next line to have training and evaluating only do one iteration
+#debug=True
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
     memory_available = [int(x.split()[2]) for x in open('.tmp', 'r').readlines()]
@@ -164,6 +167,8 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         total_loss += cur_loss
         cur_loss.backward()
         optimizer.step()
+        if debug:
+          break
         #if mixed_precision:
         #    with amp.scale_loss(cur_loss, optimizer) as scaled_loss:
         #        scaled_loss.backward()
@@ -221,7 +226,8 @@ def _validate(model, loss, dataloader, device):
             if isinstance(model, cascade_net.CascadeNet):
                 average_seg = 0.5*(output['deconv'] + output['biline'])
                 dice_total += dice_score(average_seg, target)
-    
+            if debug:
+              break
     avg_dice = dice_total / examples_total
     avg_loss = loss_total / examples_total 
     return avg_dice, avg_loss

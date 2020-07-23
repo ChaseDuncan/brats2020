@@ -14,3 +14,13 @@ class PolynomialLR(lr_scheduler._LRScheduler):
     return [group['lr'] * self._decay_rate()
         for group in self.optimizer.param_groups]
 
+class LRRangeTest(lr_scheduler._LRScheduler):
+  def __init__(self, optimizer, min_lr, growth_cons, last_epoch=-1):
+    super(PolynomialLR, self).__init__(optimizer, last_epoch)
+    self.min_lr = min_lr
+    self.growth_cons = growth_cons
+
+  def get_lr(self):
+    return [group['lr'] * self._decay_rate()
+        for group in self.optimizer.param_groups]
+

@@ -98,9 +98,9 @@ args = parser.parse_args()
 
 #device = torch.device(f'cuda:{args.device}')
 device = torch.device('cuda')
-
-os.makedirs(f'{args.dir}/{args.model}/logs', exist_ok=True)
-os.makedirs(f'{args.dir}/{args.model}/checkpoints', exist_ok=True)
+model_dir = f'{model_dir}'
+os.makedirs(f'{model_dir}/logs', exist_ok=True)
+os.makedirs(f'{model_dir}/checkpoints', exist_ok=True)
 
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
@@ -110,7 +110,7 @@ torch.manual_seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-with open(os.path.join(f'{args.dir}/{args.model}', 'command.sh'), 'w') as f:
+with open(os.path.join(f'{model_dir}', 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
@@ -180,7 +180,7 @@ if args.resume:
   optimizer.load_state_dict(checkpoint["optimizer"])    
   print(f'Resume training from {args.resume}, epoch {checkpoint["epoch"]}.')
 
-writer = SummaryWriter(log_dir=f'{args.dir}/{args.model}/logs')
+writer = SummaryWriter(log_dir=f'{model_dir}/logs')
 
 # model has to be on device before passing to amp
 if args.mixed_precision:
@@ -205,7 +205,7 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(
-                f'{args.dir}/{args.model}/checkpoints',
+                f'{model_dir}/checkpoints',
                 epoch + 1,
                 state_dict=model.state_dict(),
                 optimizer=optimizer.state_dict()
@@ -230,23 +230,23 @@ for epoch in range(start_epoch, args.epochs):
         print(table)
     
         # Log validation
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/loss/train', train_val['loss'], epoch)
+        writer.add_scalar(f'{model_dir}/logs/loss/train', train_val['loss'], epoch)
         et, wt, tc = train_val['dice']
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/et', et, epoch)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/wt', wt, epoch)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/tc', tc, epoch)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/et_lr', et, lr)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/wt_lr', wt, lr)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/tc_lr', tc, lr)
+        writer.add_scalar(f'{model_dir}/logs/dice/train/et', et, epoch)
+        writer.add_scalar(f'{model_dir}/logs/dice/train/wt', wt, epoch)
+        writer.add_scalar(f'{model_dir}/logs/dice/train/tc', tc, epoch)
+        writer.add_scalar(f'{model_dir}/logs/dice/train/et_lr', et, lr)
+        writer.add_scalar(f'{model_dir}/logs/dice/train/wt_lr', wt, lr)
+        writer.add_scalar(f'{model_dir}/logs/dice/train/tc_lr', tc, lr)
 
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/loss/eval', eval_val['loss'], epoch)
+        writer.add_scalar(f'{model_dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/et', et, epoch)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/wt', wt, epoch)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/tc', tc, epoch)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/et_lr', et, lr)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/wt_lr', wt, lr)
-        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/tc_lr', tc, lr)
+        writer.add_scalar(f'{model_dir}/logs/dice/eval/et', et, epoch)
+        writer.add_scalar(f'{model_dir}/logs/dice/eval/wt', wt, epoch)
+        writer.add_scalar(f'{model_dir}/logs/dice/eval/tc', tc, epoch)
+        writer.add_scalar(f'{model_dir}/logs/dice/eval/et_lr', et, lr)
+        writer.add_scalar(f'{model_dir}/logs/dice/eval/wt_lr', wt, lr)
+        writer.add_scalar(f'{model_dir}/logs/dice/eval/tc_lr', tc, lr)
         writer.flush()
 
 

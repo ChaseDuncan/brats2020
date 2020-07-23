@@ -70,6 +70,9 @@ parser.add_argument('--wd', type=float, default=1e-4,
 parser.add_argument('--resume', type=str, default=None, metavar='PATH',
                         help='checkpoint to resume training from (default: None)')
 
+parser.add_argument('--pretrain', type=str, default=None, metavar='PATH',
+                        help='pretrained model to start training from (default: None)')
+
 parser.add_argument('--epochs', type=int, default=300, metavar='N', 
     help='number of epochs to train (default: 300)')
 
@@ -97,8 +100,9 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-#device = torch.device(f'cuda:{args.device}')
-device = torch.device('cuda')
+device = torch.device(f'cuda:{args.device}')
+
+
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
@@ -175,16 +179,22 @@ model = model.to(device)
 
 start_epoch = 0
 if args.resume:
-  print("Resume training from %s" % args.resume)
-  checkpoint = torch.load(args.resume)
-  start_epoch = checkpoint["epoch"]
-  model.load_state_dict(checkpoint["state_dict"])
-  optimizer.load_state_dict(checkpoint["optimizer"])    
+    print(f'Resume training from {args.resume}')
+    checkpoint = torch.load(args.resume)
+    start_epoch = checkpoint["epoch"]
+    model.load_state_dict(checkpoint["state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer"])    
 
-# get this on line, cmon
+if args.pretrain:
+    print(f'Begin training from pretrained model {args.pretrain}')
+    checkpoint = torch.load(args.pretrain)
+    model.load_state_dict(checkpoint["state_dict"])
+
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 
 # this must occur before giving the optimizer to amp
+lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
+scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)
 #scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
 
 # model has to be on device before passing to amp
@@ -255,8 +265,5 @@ for epoch in range(start_epoch, args.epochs):
         writer.flush()
 
 
-    # equivalent: scheduler.step()
-    lr = (epoch + 1)*args.lr_add_cnst   
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+    scheduler.step()
 

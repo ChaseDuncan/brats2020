@@ -29,7 +29,7 @@ from data_loader import BraTSTrainDataset
 from apex_dummy import amp
 
 parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
-lr_add_cnst = 0.00045 
+lr_add_cnst = 1e-6
 # In this directory is stored the script used to start the training,
 # the most recent and best checkpoints, and a directory of logs.
 parser.add_argument('--dir', type=str, required=True, metavar='PATH',
@@ -87,6 +87,9 @@ parser.add_argument('--eval_freq', type=int, default=5, metavar='N',
 
 parser.add_argument('--lr', type=float, default=1e-4, metavar='LR', 
     help='initial learning rate (default: 1e-4)')
+
+parser.add_argument('--lr_add_cnst', type=float, default=1e-6, metavar='LR', 
+    help='constant to add to learning rate each epoch (default: 1e-6)')
 
 # Currently unused.
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
@@ -192,7 +195,8 @@ if args.mixed_precision:
 # TODO: optimizer factory, allow for SGD with momentum etx.
 columns = ['set', 'ep', 'lr', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
-lr=0.0
+
+lr = args.lr
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
@@ -219,10 +223,10 @@ for epoch in range(start_epoch, args.epochs):
         eval_val = validate(model, loss, valloader, device)
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        train_values = ['train', epoch + 1, lr, train_val['loss'].data] \
+        train_values = ['train', epoch + 1, lr*1000, train_val['loss'].data] \
           + train_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
-        eval_values = ['eval', epoch + 1, lr, eval_val['loss'].data] \
+        eval_values = ['eval', epoch + 1, lr*1000, eval_val['loss'].data] \
           + eval_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
 
@@ -248,10 +252,11 @@ for epoch in range(start_epoch, args.epochs):
         writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
+        writer.flush()
 
 
     # equivalent: scheduler.step()
-    lr = (epoch + 1)*lr_add_cnst   
+    lr = (epoch + 1)*args.lr_add_cnst   
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 

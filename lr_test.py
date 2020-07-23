@@ -28,8 +28,7 @@ from data_loader import BraTSTrainDataset
 #from apex import amp
 from apex_dummy import amp
 
-parser = argparse.ArgumentParser(description='Train glioma segmentation model.')
-lr_add_cnst = 1e-6
+parser = argparse.ArgumentParser(description='Test for learning max and min values for cyclic learning rate.')
 # In this directory is stored the script used to start the training,
 # the most recent and best checkpoints, and a directory of logs.
 parser.add_argument('--dir', type=str, required=True, metavar='PATH',
@@ -100,8 +99,8 @@ args = parser.parse_args()
 #device = torch.device(f'cuda:{args.device}')
 device = torch.device('cuda')
 
-os.makedirs(f'{args.dir}/logs', exist_ok=True)
-os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
+os.makedirs(f'{args.dir}/{args.model}/logs', exist_ok=True)
+os.makedirs(f'{args.dir}/{args.model}/checkpoints', exist_ok=True)
 
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
@@ -111,7 +110,7 @@ torch.manual_seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
+with open(os.path.join(f'{args.dir}/{args.model}', 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
@@ -175,17 +174,13 @@ model = model.to(device)
 
 start_epoch = 0
 if args.resume:
-  print("Resume training from %s" % args.resume)
   checkpoint = torch.load(args.resume)
   start_epoch = checkpoint["epoch"]
   model.load_state_dict(checkpoint["state_dict"])
   optimizer.load_state_dict(checkpoint["optimizer"])    
+  print(f'Resume training from {args.resume}, epoch {checkpoint["epoch"]}.')
 
-# get this on line, cmon
-writer = SummaryWriter(log_dir=f'{args.dir}/logs')
-
-# this must occur before giving the optimizer to amp
-#scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
+writer = SummaryWriter(log_dir=f'{args.dir}/{args.model}/logs')
 
 # model has to be on device before passing to amp
 if args.mixed_precision:
@@ -210,7 +205,7 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(
-                f'{args.dir}/checkpoints',
+                f'{args.dir}/{args.model}/checkpoints',
                 epoch + 1,
                 state_dict=model.state_dict(),
                 optimizer=optimizer.state_dict()
@@ -235,23 +230,24 @@ for epoch in range(start_epoch, args.epochs):
         print(table)
     
         # Log validation
-        writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/loss/train', train_val['loss'], epoch)
         et, wt, tc = train_val['dice']
-        writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/et_lr', et, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/wt_lr', wt, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/et_lr', et, lr)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/wt_lr', wt, lr)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/train/tc_lr', tc, lr)
 
-        writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc', tc, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/et_lr', et, lr)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/wt_lr', wt, lr)
+        writer.add_scalar(f'{args.dir}/{args.model}/logs/dice/eval/tc_lr', tc, lr)
+        writer.flush()
 
 
     # equivalent: scheduler.step()

@@ -70,6 +70,9 @@ parser.add_argument('--wd', type=float, default=1e-4,
 parser.add_argument('--resume', type=str, default=None, metavar='PATH',
                         help='checkpoint to resume training from (default: None)')
 
+parser.add_argument('--pretrain', type=str, default=None, metavar='PATH',
+                        help='pretrained model to start training from (default: None)')
+
 parser.add_argument('--epochs', type=int, default=300, metavar='N', 
     help='number of epochs to train (default: 300)')
 
@@ -97,14 +100,12 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-# is it necessary to specify the device?
-#device = torch.device(f'cuda:{args.device}')
-device = torch.device('cuda')
+device = torch.device(f'cuda:{args.device}')
 
-model_dir = f'{model_dir}'
 
-os.makedirs(f'{model_dir}/logs', exist_ok=True)
-os.makedirs(f'{model_dir}/checkpoints', exist_ok=True)
+
+os.makedirs(f'{args.dir}/logs', exist_ok=True)
+os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
@@ -114,7 +115,7 @@ torch.manual_seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-with open(os.path.join(model_dir, 'command.sh'), 'w') as f:
+with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
@@ -178,16 +179,22 @@ model = model.to(device)
 
 start_epoch = 0
 if args.resume:
-  print("Resume training from %s" % args.resume)
-  checkpoint = torch.load(args.resume)
-  start_epoch = checkpoint["epoch"]
-  model.load_state_dict(checkpoint["state_dict"])
-  optimizer.load_state_dict(checkpoint["optimizer"])    
+    print(f'Resume training from {args.resume}')
+    checkpoint = torch.load(args.resume)
+    start_epoch = checkpoint["epoch"]
+    model.load_state_dict(checkpoint["state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer"])    
 
-# get this on line, cmon
-writer = SummaryWriter(log_dir=f'{model_dir}/logs')
+if args.pretrain:
+    print(f'Begin training from pretrained model {args.pretrain}')
+    checkpoint = torch.load(args.pretrain)
+    model.load_state_dict(checkpoint["state_dict"])
+
+writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 
 # this must occur before giving the optimizer to amp
+lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
+scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)
 #scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
 
 # model has to be on device before passing to amp
@@ -213,7 +220,7 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(
-                f'{model_dir}/checkpoints',
+                f'{args.dir}/checkpoints',
                 epoch + 1,
                 state_dict=model.state_dict(),
                 optimizer=optimizer.state_dict()
@@ -238,28 +245,25 @@ for epoch in range(start_epoch, args.epochs):
         print(table)
     
         # Log validation
-        writer.add_scalar(f'{model_dir}/logs/loss/train', train_val['loss'], epoch)
+        writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
         et, wt, tc = train_val['dice']
-        writer.add_scalar(f'{model_dir}/logs/dice/train/et', et, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/wt', wt, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/tc', tc, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/et_lr', et, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/wt_lr', wt, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/tc_lr', tc, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/et_lr', et, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/wt_lr', wt, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
 
-        writer.add_scalar(f'{model_dir}/logs/loss/eval', eval_val['loss'], epoch)
+        writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/et', et, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/wt', wt, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/tc', tc, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/et_lr', et, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/wt_lr', wt, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/tc_lr', tc, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
         writer.flush()
 
 
-    # equivalent: scheduler.step()
-    lr = (epoch + 1)*args.lr_add_cnst   
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+    scheduler.step()
 

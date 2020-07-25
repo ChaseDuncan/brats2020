@@ -36,7 +36,8 @@ from abc import abstractmethod
 #    return data, metadata
 
 class BraTSDataset(Dataset):
-    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], dims=[240, 240, 155]):
+    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
+            dims=[240, 240, 155]):
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0

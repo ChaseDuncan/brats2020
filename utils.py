@@ -228,8 +228,10 @@ def _validate(model, loss, dataloader, device):
                 dice_total += dice_score(average_seg, target)
             if debug:
               break
-    avg_dice = dice_total / examples_total
-    avg_loss = loss_total / examples_total 
+        avg_dice = dice_total / examples_total
+        # still need to work this math out
+        #avg_loss = loss_total / examples_total 
+        avg_loss = loss_total / len(dataloader)
     return avg_dice, avg_loss
         
 

@@ -102,8 +102,6 @@ args = parser.parse_args()
 
 device = torch.device(f'cuda:{args.device}')
 
-
-
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 
@@ -119,8 +117,8 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
-dims=[128, 128, 128]
-#dims=[160, 192, 128]
+#dims=[128, 128, 128]
+dims=[160, 192, 128]
 if args.cross_val:
     filenames=[]
     for (dirpath, dirnames, files) in os.walk(args.data_dir):
@@ -163,8 +161,14 @@ if args.cross_val:
                             shuffle=True, num_workers=args.num_workers)
 else:
     # train without cross_val
-    pass
-     
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
+    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+    val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False)
+    valloader = DataLoader(val_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+
+
 if args.model == 'MonoUNet':
     model = MonoUNet()
     loss = losses.AvgDiceLoss()
@@ -203,10 +207,10 @@ if args.mixed_precision:
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
 # TODO: optimizer factory, allow for SGD with momentum etx.
-columns = ['set', 'ep', 'lr', 'loss', 'dice_et', 'dice_wt','dice_tc', \
+columns = ['set', 'ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
 
-lr = args.lr
+#lr = args.lr
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
@@ -226,44 +230,55 @@ for epoch in range(start_epoch, args.epochs):
                 optimizer=optimizer.state_dict()
                 )
     
+
     if (epoch + 1) % args.eval_freq == 0:
         # Evaluate on training data
-        model.eval()
-        train_val = validate(model, loss, trainloader, device)
-        eval_val = validate(model, loss, valloader, device)
-        time_ep = time.time() - time_ep
-        memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        train_values = ['train', epoch + 1, lr*1000, train_val['loss'].data] \
-          + train_val['dice'].tolist()\
-          + [ time_ep, memory_usage] 
-        eval_values = ['eval', epoch + 1, lr*1000, eval_val['loss'].data] \
-          + eval_val['dice'].tolist()\
-          + [ time_ep, memory_usage] 
+        #train_val = validate(model, loss, trainloader, device)
+        #time_ep = time.time() - time_ep
+        #memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
+        #train_values = ['train', epoch + 1, lr*1000, train_val['loss'].data] \
+        #  + train_val['dice'].tolist()\
+        #  + [ time_ep, memory_usage] 
+        #eval_values = ['eval', epoch + 1, lr*1000, eval_val['loss'].data] \
+        #  + eval_val['dice'].tolist()\
+        #  + [ time_ep, memory_usage] 
 
-        table = tabulate.tabulate([train_values, eval_values], 
-                columns, tablefmt="simple", floatfmt="8.4f")
-        print(table)
-    
-        # Log validation
-        writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
-        et, wt, tc = train_val['dice']
-        writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/et_lr', et, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/wt_lr', wt, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
+        #table = tabulate.tabulate([train_values, eval_values], 
+        #        columns, tablefmt="simple", floatfmt="8.4f")
+        #print(table)
+        model.eval()
+        eval_val = validate(model, loss, valloader, device)
 
         writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
         writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/tc', tc, epoch)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
-        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
-        writer.flush()
+        #writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
+        #writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
+        #writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
 
+        time_ep = time.time() - time_ep
+        memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
 
+        eval_values = ['eval', epoch + 0, eval_val['loss'].data] \
+          + eval_val['dice'].tolist()\
+          + [ time_ep, memory_usage] 
+
+        table = tabulate.tabulate([eval_values], 
+                columns, tablefmt="simple", floatfmt="8.4f")
+        print(table)
+   
+        # Log validation
+        #writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
+        #et, wt, tc = train_val['dice']
+        #writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
+        #writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
+        #writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+        #writer.add_scalar(f'{args.dir}/logs/dice/train/et_lr', et, lr)
+        #writer.add_scalar(f'{args.dir}/logs/dice/train/wt_lr', wt, lr)
+        #writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
+
+    writer.flush()
     scheduler.step()
 

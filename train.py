@@ -100,7 +100,10 @@ parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
 
 args = parser.parse_args()
 
-device = torch.device(f'cuda:{args.device}')
+if args.device >= 0:
+    device = torch.device(f'cuda:{args.device}')
+else:
+    device = torch.device('cpu')
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)

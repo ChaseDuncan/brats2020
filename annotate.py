@@ -13,11 +13,14 @@ import nibabel as nib
 
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
-parser.add_argument('--model_dir', type=str, required=True)
+parser.add_argument('--model_dir', type=str, required=True,
+        help='Directory containing the model to use for annotation.')
 parser.add_argument('--output_dir', type=str,
-        default=None)
+        default=None,
+        help='Path to save annotations to (default: args.model_dir/annotations/')
 parser.add_argument('--data_dir', type=str,
-        default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData')
+        default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData',
+        help='Path to directory of datasets to annotate (default: Brats 2020).')
 parser.add_argument('--device', type=int, default=-1, metavar='N',
         help='Which device to use for annotation. (default: cpu)')
 args = parser.parse_args()

@@ -109,6 +109,7 @@ def process_segs_clinical(seg):
         seg_wt[np.where(seg[b, :, :, :] > 0)] = 1
         seg_t.append(seg_wt)
 
+        # possibly errorneous
         seg_et = np.zeros(patch_size)
         seg_et[np.where(seg[b, :, :, :] == 3)] = 1
         seg_t.append(seg_et)

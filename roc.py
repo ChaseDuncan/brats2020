@@ -1,8 +1,10 @@
 import os
 import random
 import argparse
-import nibabel as nib
+
+import torch
 import numpy as np
+import nibabel as nib
 
 from utils import cross_val
 
@@ -18,8 +20,13 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
     help='random seed (default: 1)')
 parser.add_argument('-b', '--debug', action='store_true', 
         help='turn on debug mode which only uses first two files in each directory. (default: off)')
-
+parser.add_argument('-g', '--device', type=int, default=-1, metavar='N', help='Which device to use (default: cpu)')
 args = parser.parse_args()
+
+if args.device >= 0:
+    device = torch.device(f'cuda:{args.device}')
+else:
+    device = torch.device('cpu')
 
 np.random.seed(args.seed)
 random.seed(args.seed)
@@ -28,9 +35,8 @@ segs = []
 _, (_, gts) = cross_val(args.data_dir) 
 
 for (dirpath, dirnames, files) in os.walk(args.seg_dir):
-  segs += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
-
-
+  segs += [os.path.join(dirpath, file)\
+          for file in files if '.nii.gz' in file ]
 
 gts.sort()
 debug_mod = len(gts)
@@ -44,11 +50,11 @@ for g, s in zip(gts_patients, segs_patients):
     assert g[:-11] == s[:-7], f'{g[:-11]}, {s[:-7]} do not match'
 
 def roc_stats(seg_t, gt_t):
-    st2 = np.einsum('ijk, ijk->', seg_t, seg_t)
-    tp = np.einsum('ijk, ijk->', seg_t, gt_t)
+    st2 = torch.einsum('ijk, ijk->', seg_t, seg_t)
+    tp = torch.einsum('ijk, ijk->', seg_t, gt_t)
     fp = st2 - tp
-    fn = np.einsum('ijk, ijk->', gt_t, gt_t) - tp
-    tn = (np.prod(gt_t.shape) - st2) - fp
+    fn = torch.einsum('ijk, ijk->', gt_t, gt_t) - tp
+    tn = ((gt_t.size()[0]*gt_t.size()[1]*gt_t.size()[2]) - st2) - fp
 
     return tp / (tp + fn + 1e-32), fp / (fp + tn + 1e-32)
 
@@ -56,17 +62,21 @@ def conf_mats(seg, gt):
     ''' Compute true positives and false positives for the three clinical labels 
     enhancing tumor, whole tumor, and tumor core.
     '''
-    seg_et = np.where(seg == 4, np.ones(seg.shape), np.zeros(seg.shape))
-    gt_et = np.where(gt == 4, np.ones(gt.shape), np.zeros(gt.shape))
+    o = torch.ones(seg.shape).cuda()
+    z = torch.zeros(seg.shape).cuda()
+    seg_et = torch.where(seg == 4, o, z)
+    gt_et = torch.where(gt == 4, o, z)
     et = roc_stats(seg_et, gt_et)
 
-    # seg_wt, gt_wt = seg[np.where(seg > 0)], gt[np.where(gt > 0)]
-    seg_wt = np.where(seg > 0, np.ones(seg.shape), np.zeros(seg.shape))
-    gt_wt = np.where(gt > 0, np.ones(gt.shape), np.zeros(gt.shape))
+    # seg_wt, gt_wt = seg[torch.where(seg > 0)], gt[torch.where(gt > 0)]
+    seg_wt = torch.where(seg > 0, o, z)
+    gt_wt = torch.where(gt > 0, o, z)
     wt = roc_stats(seg_wt, gt_wt)
 
-    seg_tc = np.where((seg == 4) | (seg == 1), np.ones(seg.shape), np.zeros(seg.shape))
-    gt_tc = np.where((gt== 4) | (gt == 1), np.ones(gt.shape), np.zeros(gt.shape))
+    seg_tc = torch.where((seg == 4) | (seg == 1), 
+            o, z)
+    gt_tc = torch.where((gt== 4) | (gt == 1), 
+            o, z)
     tc = roc_stats(seg_tc, gt_tc)
 
     return et, wt, tc
@@ -74,25 +84,30 @@ def conf_mats(seg, gt):
 print('Computing confusion matrix.')
 stats = []
 for i, (seg, gt) in enumerate(zip(segs, gts)):
-    if i % debug_mod != 0 and i % debug_mod != 1 and args.debug:
+    if i % debug_mod != 0 and i % debug_mod != 1 and i % debug_mod != 2 and args.debug:
         continue
     print(f'processing... {i} / {len(segs)}      {seg}')
     # for some reason the 4s load in as 3.99999... so we must round up
-    seg_d = np.rint(nib.load(seg).get_fdata())
-    gt_d = nib.load(gt).get_fdata()
+    seg_d = torch.from_numpy(
+            np.rint(
+                nib.load(seg).get_fdata()
+                )
+            ).to(device)
+    gt_d = torch.from_numpy(
+            nib.load(gt).get_fdata()
+            ).to(device)
     # list of triples with an index for each label type.
     # each element of the triple is a double 
     # (true positives, false positives).
     stats.append(conf_mats(seg_d, gt_d))
 
-print(len(stats))
 n = len(stats) // num_thresholds
-by_thresh = [np.array(stats[i:i + n])\
+by_thresh = [torch.tensor(stats[i:i + n])\
         for i in range(0, len(stats), n)]
 
 thresholds = [(i+1) / 10 for i in range(10)]
 for i, thresh in enumerate(by_thresh):
     N = len(thresh)    
-    macro = np.sum(thresh, axis=2) / N
+    macro = torch.sum(thresh, axis=0) / N
     print(f'{thresholds[i]} {macro}')
     

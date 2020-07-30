@@ -71,14 +71,13 @@ thresholds = [(i+1) / 10 for i in range(10)]
 with torch.no_grad():
     model.eval()
     dims=[160, 192, 128]
+    x_off = int((240 - dims[0]) / 2)
+    y_off = int((240 - dims[1]) / 2)
+    z_off = int((155 - dims[2]) / 2)
+
     for d in tqdm(dataloader):
         src = d['data'].to(device, dtype=torch.float)
         output = model(src)
-
-        x_off = int((240 - dims[0]) / 2)
-        y_off = int((240 - dims[1]) / 2)
-        z_off = int((155 - dims[2]) / 2)
-
         m = nn.ConstantPad3d((z_off, z_off, y_off, 
             y_off, x_off, x_off), 0)
 

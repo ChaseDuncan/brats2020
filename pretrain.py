@@ -101,9 +101,9 @@ if args.device >= 0:
 else:
     device = torch.device('cpu')
 
-model_dir = f'{model_dir}'
-os.makedirs(f'{model_dir}/logs', exist_ok=True)
-os.makedirs(f'{model_dir}/checkpoints', exist_ok=True)
+args.dir = f'{args.dir}'
+os.makedirs(f'{args.dir}/logs', exist_ok=True)
+os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
@@ -113,56 +113,34 @@ torch.manual_seed(args.seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-with open(os.path.join(f'{model_dir}', 'command.sh'), 'w') as f:
+with open(os.path.join(f'{args.dir}', 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
-dims=[128, 128, 128]
-#dims=[160, 192, 128]
+#dims=[128, 128, 128]
+dims=[160, 192, 128]
 if args.cross_val:
-    filenames=[]
-    for (dirpath, dirnames, files) in os.walk(args.data_dir):
-        filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
-
-        modes = [sorted([ f for f in filenames if "t1.nii.gz" in f ]),
-                      sorted([ f for f in filenames if "t1ce.nii.gz" in f ]),
-                      sorted([ f for f in filenames if "t2.nii.gz" in f ]),
-                      sorted([ f for f in filenames if "flair.nii.gz" in f ]),
-                        sorted([ f for f in filenames if "seg.nii.gz" in f ])
-
-            ]
-    joined_files = list(zip(*modes))
-
-    random.shuffle(joined_files)
-    split_idx = int(0.8*len(joined_files))
-    train_split, val_split = joined_files[:split_idx], joined_files[split_idx:]
-    def proc_split(split):
-        modes = [[], [], [], []]
-        segs = []
-
-        for t1, t1ce, t2, flair, seg in split:
-            modes[0].append(t1)
-            modes[1].append(t1ce)
-            modes[2].append(t2)
-            modes[3].append(flair)
-            segs.append(seg)
-        return modes, segs
-
-    train_modes, train_segs = proc_split(train_split)
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True,
+    (train_modes, train_segs), (val_modes, val_segs) = cross_val(args.data_dir) 
+    train_data = BraTSTrainDataset(data_dir, dims=dims, augment_data=True,
             modes=train_modes, segs=train_segs)
-    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
-                            shuffle=True, num_workers=args.num_workers)
+    trainloader = DataLoader(train_data, batch_size=batch_size, 
+                            shuffle=True, num_workers=num_workers)
 
-    val_modes, val_segs = proc_split(val_split)
-    val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False,
+    val_data = BraTSTrainDataset(data_dir, dims=dims, augment_data=False,
             modes=val_modes, segs=val_segs)
-    valloader = DataLoader(val_data, batch_size=args.batch_size, 
-                            shuffle=True, num_workers=args.num_workers)
+    valloader = DataLoader(val_data, batch_size=batch_size, 
+                            shuffle=True, num_workers=num_workers)
 else:
     # train without cross_val
-    pass
-     
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
+    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+    val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False)
+    valloader = DataLoader(val_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+
+
+    
 if args.model == 'MonoUNet':
     model = MonoUNet()
     loss = losses.AvgDiceLoss()
@@ -183,7 +161,7 @@ if args.resume:
   optimizer.load_state_dict(checkpoint["optimizer"])    
   print(f'Resume training from {args.resume}, epoch {checkpoint["epoch"]}.')
 
-writer = SummaryWriter(log_dir=f'{model_dir}/logs')
+writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 
 # model has to be on device before passing to amp
 if args.mixed_precision:
@@ -208,7 +186,7 @@ for epoch in range(start_epoch, args.epochs):
     
     if (epoch + 1) % args.save_freq == 0:
         save_checkpoint(
-                f'{model_dir}/checkpoints',
+                f'{args.dir}/checkpoints',
                 epoch + 1,
                 state_dict=model.state_dict(),
                 optimizer=optimizer.state_dict()
@@ -233,23 +211,23 @@ for epoch in range(start_epoch, args.epochs):
         print(table)
     
         # Log validation
-        writer.add_scalar(f'{model_dir}/logs/loss/train', train_val['loss'], epoch)
+        writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
         et, wt, tc = train_val['dice']
-        writer.add_scalar(f'{model_dir}/logs/dice/train/et', et, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/wt', wt, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/tc', tc, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/et_lr', et, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/wt_lr', wt, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/train/tc_lr', tc, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/et_lr', et, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/wt_lr', wt, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
 
-        writer.add_scalar(f'{model_dir}/logs/loss/eval', eval_val['loss'], epoch)
+        writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/et', et, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/wt', wt, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/tc', tc, epoch)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/et_lr', et, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/wt_lr', wt, lr)
-        writer.add_scalar(f'{model_dir}/logs/dice/eval/tc_lr', tc, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc', tc, epoch)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
+        writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
         writer.flush()
 
 

@@ -72,7 +72,6 @@ with torch.no_grad():
         tc = m(output[0, 2, :, :, :])
         
         label = torch.zeros((240, 240, 155))
-
         label[torch.where(wt > args.thresh)] = 2
         label[torch.where(tc > args.thresh)] = 1
         label[torch.where(et > args.thresh)] = 4

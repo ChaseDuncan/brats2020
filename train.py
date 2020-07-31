@@ -3,6 +3,8 @@ import sys
 import time
 import tabulate
 
+from torchcontrib.optim import SWA
+
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -60,6 +62,9 @@ parser.add_argument('--mixed_precision', action='store_true',
 
 parser.add_argument('--cross_val', action='store_true', 
     help='use train/val split of full dataset (default: off)')
+
+parser.add_argument('--swa', action='store_true', 
+    help='use stochastic weight averaging during training (default: off)')
 
 parser.add_argument('--seed', type=int, default=1, metavar='S', 
     help='random seed (default: 1)')
@@ -120,8 +125,8 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
   f.write('\n')
 
-#dims=[128, 128, 128]
-dims=[160, 192, 128]
+dims=[128, 128, 128]
+#dims=[160, 192, 128]
 if args.cross_val:
     filenames=[]
     for (dirpath, dirnames, files) in os.walk(args.data_dir):
@@ -198,11 +203,16 @@ if args.pretrain:
     model.load_state_dict(checkpoint["state_dict"])
 
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')
-
-# this must occur before giving the optimizer to amp
-lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
-scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)
-#scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
+scheduler = None
+swa_start = 10
+if args.swa:
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    opt = SWA(optimizer, swa_start=swa_start, swa_freq=5, swa_lr=0.05)
+else:
+    # this must occur before giving the optimizer to amp
+    lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
+    scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)
+    #scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
 
 # model has to be on device before passing to amp
 if args.mixed_precision:
@@ -224,8 +234,12 @@ for epoch in range(start_epoch, args.epochs):
             trainloader, 
             device, 
             mixed_precision=args.mixed_precision)
-    
+
+    if args.swa and epoch > swa_start:
+        opt.swap_swa_sgd()
+
     if (epoch + 1) % args.save_freq == 0:
+        opt.bn_update(trainloader, model)
         save_checkpoint(
                 f'{args.dir}/checkpoints',
                 epoch + 1,
@@ -233,8 +247,8 @@ for epoch in range(start_epoch, args.epochs):
                 optimizer=optimizer.state_dict()
                 )
     
-
     if (epoch + 1) % args.eval_freq == 0:
+        opt.bn_update(trainloader, model)
         # Evaluate on training data
         #train_val = validate(model, loss, trainloader, device)
         #time_ep = time.time() - time_ep
@@ -283,5 +297,6 @@ for epoch in range(start_epoch, args.epochs):
         #writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
 
     writer.flush()
-    scheduler.step()
+    if not args.swa:
+        scheduler.step()
 

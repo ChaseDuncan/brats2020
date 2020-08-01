@@ -109,5 +109,5 @@ thresholds = [(i+1) / 10 for i in range(10)]
 for i, thresh in enumerate(by_thresh):
     N = len(thresh)    
     macro = torch.sum(thresh, axis=0) / N
-    print(f'{thresholds[i]} {macro}')
+    print(f'{thresholds[i]} {macro.view(-1).tolist()}')
     

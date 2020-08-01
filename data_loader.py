@@ -36,16 +36,17 @@ from abc import abstractmethod
 #    return data, metadata
 
 class BraTSDataset(Dataset):
-    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-            dims=[240, 240, 155]):
+    def __init__(self, data_dir, dims=[240, 240, 155], modes=None, segs=None):
         self.x_off = 0
         self.y_off = 0
         self.z_off = 0
         self.dims=dims
-
+        
         filenames = []
+        # should have a conditional here to skip this is modes and segs are not None
         for (dirpath, dirnames, files) in os.walk(data_dir):
-          filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
+          filenames += [os.path.join(dirpath, file) 
+                  for file in files if '.nii.gz' in file ]
 
         self.modes = [sorted([ f for f in filenames if "t1.nii.gz" in f ]),
                       sorted([ f for f in filenames if "t1ce.nii.gz" in f ]),
@@ -54,6 +55,12 @@ class BraTSDataset(Dataset):
             ]
 
         self.segs = sorted([ f for f in filenames if "seg.nii.gz" in f ])
+
+        if modes:
+            self.modes = modes
+        if segs:
+            self.segs = segs
+
 
 
     def __len__(self):
@@ -126,7 +133,7 @@ class BraTSTrainDataset(BraTSDataset):
         augment_data = True, 
         clinical_segs=True,
         modes=None, segs=None):
-        BraTSDataset.__init__(self, data_dir, modes, dims)
+        BraTSDataset.__init__(self, data_dir, dims, modes=modes, segs=segs)
         self.clinical_segs = clinical_segs
 
         self.augment_data = augment_data
@@ -134,10 +141,6 @@ class BraTSTrainDataset(BraTSDataset):
         # randomly mirror along axis
         self.mirror = False
         self.axis = np.random.choice([0, 1, 2], 1)[0]
-        if modes:
-            self.modes = modes
-        if segs:
-            self.segs = segs
 
     def data_aug(self, brain):
         shift_brain = brain + np.random.uniform(-0.1, 0.1, brain.shape)
@@ -152,7 +155,6 @@ class BraTSTrainDataset(BraTSDataset):
 
             header = image.header
         return images, header
-    
 
     def _transform_data(self, d):
         img_trans = BraTSDataset._transform_data(self, d)
@@ -230,9 +232,9 @@ class BraTSTrainDataset(BraTSDataset):
         return src, target
 
 class BraTSAnnotationDataset(BraTSDataset):
-    def __init__(self, data_dir, modes=['t1', 't1ce', 't2', 'flair'], 
-        dims=[240, 240, 155], augment_data = True, clinical_segs=True):
-        BraTSDataset.__init__(self, data_dir, modes, dims)
+    def __init__(self, data_dir,  
+        dims=[240, 240, 155], augment_data = True, clinical_segs=True, modes=None):
+        BraTSDataset.__init__(self, data_dir, modes=modes, dims=dims)
 
     def _patient(self, f):
         return f.split('/')[-2]
@@ -245,10 +247,10 @@ class BraTSAnnotationDataset(BraTSDataset):
 
         ## this has to be on for outputing segmentations
         #  otherwise the metadata won't be correct
-
+        # ideally this should be done in preprocessing or 
+        # something not here.
         return {'patient': self._patient(self.modes[0][idx]), 
                 'data': src, 
-                # this should be done in preprocessing or something not here
                 'qoffsets': [
                     header['qoffset_x'],
                     header['qoffset_y'],

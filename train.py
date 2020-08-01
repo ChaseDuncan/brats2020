@@ -204,10 +204,11 @@ if args.pretrain:
 
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = None
-swa_start = 10
+
+swa_start = 1
 if args.swa:
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-    opt = SWA(optimizer, swa_start=swa_start, swa_freq=5, swa_lr=0.05)
+    opt = SWA(optimizer, swa_start=swa_start, swa_freq=1, swa_lr=0.05)
 else:
     # this must occur before giving the optimizer to amp
     lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
@@ -228,13 +229,21 @@ for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
     model.train()
 
-    train(model, 
-            loss, 
-            optimizer, 
-            trainloader, 
-            device, 
-            mixed_precision=args.mixed_precision)
-
+    if args.swa:
+        train(model, 
+                loss, 
+                opt, 
+                trainloader, 
+                device, 
+                mixed_precision=args.mixed_precision)
+    else:
+         train(model, 
+                loss, 
+                optimizer, 
+                trainloader, 
+                device, 
+                mixed_precision=args.mixed_precision)
+       
     if args.swa and epoch > swa_start:
         opt.swap_swa_sgd()
 

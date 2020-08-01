@@ -2,11 +2,13 @@ import torch
 import numpy as np
 import json
 import os
+import random
 
 import nibabel as nib
 
 from configparser import ConfigParser
 from torch.utils.data import DataLoader
+from data_loader import BraTSTrainDataset
 from losses import (
     dice_score,
     agg_dice_score
@@ -28,6 +30,43 @@ def get_free_gpu():
     memory_available = [int(x.split()[2]) for x in open('.tmp', 'r').readlines()]
     os.system('rm .tmp')
     return np.argmax(memory_available)
+
+def cross_val(data_dir, split=0.8):
+    # added this here because I couldn't get the splits to match for
+    # thresh_sweep.py and roc.py despite using the same seed in the
+    # main file. putting this here caused the splits to match.
+    random.seed(1234)
+    filenames=[]
+    for (dirpath, dirnames, files) in os.walk(data_dir):
+        filenames += [os.path.join(dirpath, file) 
+                for file in files if '.nii.gz' in file ]
+
+        modes = [sorted([ f for f in filenames if "t1.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "t1ce.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "t2.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "flair.nii.gz" in f ]),
+                      sorted([ f for f in filenames if "seg.nii.gz" in f ])
+
+            ]
+    joined_files = list(zip(*modes))
+
+    random.shuffle(joined_files)
+
+    # hardcoded 80/20 split
+    split_idx = int(split*len(joined_files))
+    train_split, val_split = joined_files[:split_idx], joined_files[split_idx:]
+    def proc_split(split):
+        modes = [[], [], [], []]
+        segs = []
+
+        for t1, t1ce, t2, flair, seg in split:
+            modes[0].append(t1)
+            modes[1].append(t1ce)
+            modes[2].append(t2)
+            modes[3].append(flair)
+            segs.append(seg)
+        return modes, segs
+    return proc_split(train_split), proc_split(val_split)
 
 
 def save_checkpoint(dir, epoch, name='checkpoint', **kwargs):

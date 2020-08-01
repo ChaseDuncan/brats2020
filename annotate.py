@@ -14,33 +14,40 @@ import nibabel as nib
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
 parser.add_argument('-m', '--model_dir', type=str, required=True,
-        help='Directory containing the model to use for annotation.')
-parser.add_argument('-o', '--output_dir', type=str,
-        default=None,
-        help='Path to save annotations to (default: args.model_dir/annotations/')
+        help='Data directory for model.')
+parser.add_argument('-o', '--output_dir', type=str, default=None,
+        help='Path to save annotations to (default: args.model/annotations/')
 parser.add_argument('-d', '--data_dir', type=str,
-        default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData',
+    default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData',
         help='Path to directory of datasets to annotate (default: Brats 2020)')
+parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
+        help='Specify a specific checkpoint. The default behavior is to use the\
+                checkpoint with the largest epoch in its name.')
 parser.add_argument('-g', '--device', type=int, default=-1, metavar='N',
         help='Which device to use for annotation. (default: cpu)')
 parser.add_argument('-t', '--thresh', type=float, default=0.5, metavar='p',
         help='threhold on probability for predicting true (default: 0.5)')
 # finish this
 #parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
-#        help='Which checkpoint to use if not most recent (default: most recent checkpoint in args.model_dir/checkpoints/)')
+#        help='Which checkpoint to use if not most recent (default: most recent checkpoint in args.model/checkpoints/)')
 
 args = parser.parse_args()
 if args.device >= 0:
     device = torch.device(f'cuda:{args.device}')
 else:
     device = torch.device('cpu')
-
 for p, _, files in os.walk(f'{args.model_dir}/checkpoints/'):
     checkpoint_file = os.path.join(p, files[-1])
-     
-    
+    if args.checkpoint is not None:
+        for f in files:
+            ep = ''.join([s for s in f if s.isdigit()])
+            if args.checkpoint == int(ep):
+                checkpoint_file = os.path.join(p, f)
+                break
+
+ep = ''.join([s for s in checkpoint_file if s.isdigit()])
 if args.output_dir == None:
-    annotations_dir = f'{args.model_dir}/annotations'
+    annotations_dir = f'{args.model_dir}/annotations/{ep}/'
 else:
     annotations_dir = f'{args.output_dir}'
 

@@ -204,6 +204,7 @@ if args.pretrain:
 
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = None
+
 swa_start = 1
 if args.swa:
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)

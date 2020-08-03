@@ -177,23 +177,6 @@ def process_segs(seg):
         segs.append(seg_t)
     return torch.from_numpy(np.array(segs))
 
-# currently unused. see note on validate_bg
-def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
-    model.train()
-     
-    for i, batch in enumerate(tr_gen):
-        if i > batches_per_epoch:
-            break
-        optimizer.zero_grad()
-        src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
-            process_segs(batch['seg']).to(device, dtype=torch.float)
-        output = model(src)
-
-        cur_loss = loss(output, {'target':target, 'src':src})
-
-        cur_loss.backward()
-        optimizer.step()
-
 # all the training and validation functions need to get out of here
 def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False):
     total_loss = 0
@@ -216,33 +199,6 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         #    cur_loss.backward()
         #    optimizer.step()
    
-# currently unused. for validation when using batchgenerator.
-# batchgenerator produces examples forever so the loop has
-# and additional variable for tracking how much of the set
-# has been annotated. 
-def _validate_bg(model, loss, val_gen, batches_per_epoch, device):
-    total_loss = 0
-    total_dice = 0
-    total_dice_agg = 0
-    total_examples = 0
-    with torch.no_grad():
-        model.eval()
-        for i, batch in enumerate(val_gen):
-            if i > batches_per_epoch:
-                break
-            src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
-                process_segs(batch['seg']).to(device, dtype=torch.float)
-            total_examples += src.size()[0]
-            output = model(src)
-            total_loss += loss(output, {'target':target, 'src':src}) 
-            total_dice += dice_score(output, target)
-            total_dice_agg += agg_dice_score(output, target)
-    avg_dice = total_dice / total_examples
-    avg_dice_agg = total_dice_agg / total_examples 
-    avg_loss = total_loss / total_examples 
-    return avg_dice, avg_dice_agg, avg_loss
-
-
 def _validate(model, loss, dataloader, device):
     loss_total = 0
     dice_total = 0

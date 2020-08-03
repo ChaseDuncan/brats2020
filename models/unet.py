@@ -116,9 +116,9 @@ class Decoder(nn.Module):
         return output
      
 # deprecated
-class MonoUNet(nn.Module):
+class UNet(nn.Module):
     def __init__(self):
-        super(MonoUNet, self).__init__()
+        super(UNet, self).__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
 

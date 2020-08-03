@@ -54,11 +54,14 @@ parser.add_argument('--loss', type=str, default='avgdice',
     choices=['dice', 'recon', 'avgdice', 'vae'], 
     help='which loss to use during training (default: avgdice)')
 
-parser.add_argument('--data_par', action='store_true', 
-    help='data parellelism flag (default: off)')
+parser.add_argument('-a', '--augment_data', action='store_true', 
+    help='augment training data with mirroring, shifts, and scaling (default: off)')
 
 parser.add_argument('--mixed_precision', action='store_true', 
     help='mixed precision flag (default: off)')
+
+parser.add_argument('-L', '--large_patch', action='store_true', 
+        help='use patch size 160x192x128 (default patch size: 128x128x128)')
 
 parser.add_argument('--cross_val', action='store_true', 
     help='use train/val split of full dataset (default: off)')
@@ -99,6 +102,8 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
 parser.add_argument('--lr_add_cnst', type=float, default=1e-6, metavar='LR', 
     help='constant to add to learning rate each epoch (default: 1e-6)')
 
+parser.add_argument('-m', action='store', dest='msg', nargs='*', type=str, required=True)
+
 # Currently unused.
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
@@ -126,7 +131,9 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write('\n')
 
 dims=[128, 128, 128]
-#dims=[160, 192, 128]
+if args.large_patch:
+    dims=[160, 192, 128]
+
 if args.cross_val:
     filenames=[]
     for (dirpath, dirnames, files) in os.walk(args.data_dir):
@@ -157,7 +164,7 @@ if args.cross_val:
         return modes, segs
 
     train_modes, train_segs = proc_split(train_split)
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True,
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=args.augment_data,
             modes=train_modes, segs=train_segs)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
@@ -169,7 +176,7 @@ if args.cross_val:
                             shuffle=True, num_workers=args.num_workers)
 else:
     # train without cross_val
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=args.augment_data)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False)
@@ -253,7 +260,8 @@ for epoch in range(start_epoch, args.epochs):
                 f'{args.dir}/checkpoints',
                 epoch + 1,
                 state_dict=model.state_dict(),
-                optimizer=optimizer.state_dict()
+                optimizer=optimizer.state_dict(),
+                msg=args.msg
                 )
     
     if (epoch + 1) % args.eval_freq == 0:

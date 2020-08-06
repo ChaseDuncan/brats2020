@@ -17,7 +17,8 @@ import torch.utils.data.sampler as sampler
 from tqdm import tqdm
 from models import (
         models,
-        cascade_net
+        cascade_net,
+        vaereg
         )
 #from apex import amp
 from apex_dummy import amp
@@ -175,27 +176,12 @@ def process_segs(seg):
         seg_et[np.where(seg[b, :, :, :] == 3)] = 1
         seg_t.append(seg_et)
         segs.append(seg_t)
+
     return torch.from_numpy(np.array(segs))
 
-# currently unused. see note on validate_bg
-def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
-    model.train()
-     
-    for i, batch in enumerate(tr_gen):
-        if i > batches_per_epoch:
-            break
-        optimizer.zero_grad()
-        src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
-            process_segs(batch['seg']).to(device, dtype=torch.float)
-        output = model(src)
-
-        cur_loss = loss(output, {'target':target, 'src':src})
-
-        cur_loss.backward()
-        optimizer.step()
-
 # all the training and validation functions need to get out of here
-def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False):
+def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False, 
+        debug=False):
     total_loss = 0
     model.train()
     for src, target in tqdm(train_dataloader):
@@ -205,6 +191,7 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         output = model(src)
         cur_loss = loss(output, {'target':target, 'src':src})
         total_loss += cur_loss
+        #print(f'total_loss {total_loss}')
         cur_loss.backward()
         optimizer.step()
         if debug:
@@ -215,35 +202,8 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         #else:
         #    cur_loss.backward()
         #    optimizer.step()
-   
-# currently unused. for validation when using batchgenerator.
-# batchgenerator produces examples forever so the loop has
-# and additional variable for tracking how much of the set
-# has been annotated. 
-def _validate_bg(model, loss, val_gen, batches_per_epoch, device):
-    total_loss = 0
-    total_dice = 0
-    total_dice_agg = 0
-    total_examples = 0
-    with torch.no_grad():
-        model.eval()
-        for i, batch in enumerate(val_gen):
-            if i > batches_per_epoch:
-                break
-            src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
-                process_segs(batch['seg']).to(device, dtype=torch.float)
-            total_examples += src.size()[0]
-            output = model(src)
-            total_loss += loss(output, {'target':target, 'src':src}) 
-            total_dice += dice_score(output, target)
-            total_dice_agg += agg_dice_score(output, target)
-    avg_dice = total_dice / total_examples
-    avg_dice_agg = total_dice_agg / total_examples 
-    avg_loss = total_loss / total_examples 
-    return avg_dice, avg_dice_agg, avg_loss
-
-
-def _validate(model, loss, dataloader, device):
+ 
+def validate(model, loss, dataloader, device, debug=False):
     loss_total = 0
     dice_total = 0
     examples_total = 0
@@ -256,10 +216,11 @@ def _validate(model, loss, dataloader, device):
             src, target = src.to(device, dtype=torch.float),\
                 target.to(device, dtype=torch.float)
             output = model(src)
-
             loss_total += loss(output, {'target':target, 'src':src}) 
             if isinstance(model, models.MonoUNet): 
                 dice_total += dice_score(output, target)
+                #print(f'dice_total: {dice_total}')
+                dice_total += dice_score(output['seg_map'], target)
 
             ####### 
             # CascadeNet
@@ -269,17 +230,9 @@ def _validate(model, loss, dataloader, device):
             if debug:
               break
         avg_dice = dice_total / examples_total
-        # still need to work this math out
-        #avg_loss = loss_total / examples_total 
         avg_loss = loss_total / len(dataloader)
-    return avg_dice, avg_loss
-        
-
-def validate(model, loss, data_loader, device):
-    dice_avg, loss_avg =\
-        _validate(model, loss, data_loader, device)
     
-    return {'dice':dice_avg, 
-            'loss':loss_avg
+    return {'dice':avg_dice, 
+            'loss':avg_loss
             }
 

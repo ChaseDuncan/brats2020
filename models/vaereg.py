@@ -79,20 +79,20 @@ class UpsamplingDeconv3d(nn.Module):
     return self.deconv(x)
 
 
-class Vae(nn.Module):
+class VAE(nn.Module):
   def __init__(self):
-    super(Vae, self).__init__()
+    super(VAE, self).__init__()
     ## Encode
-    self.feats = nn.Sequential(nn.GroupNorm(32, 256),
+    self.feats = nn.Sequential(nn.GroupNorm(8, 256),
         nn.ReLU(inplace=True),
         nn.Conv3d(256, 16, kernel_size=3, stride=2, padding=1))
-    #self.shape1 = [16, 8, 8, 8]
-    self.shape1 = [16, 10, 12, 8]
+    self.shape1 = [16, 8, 8, 8]
+    #self.shape1 = [16, 10, 12, 8]
     self.linear = nn.Linear(self.shape1[0] * self.shape1[1] * self.shape1[2] * self.shape1[3], 256)
 
     ## Decode
-    #self.shape = [128, 8, 8, 8]
-    self.shape = [128, 10, 12, 8]
+    self.shape = [128, 8, 8, 8]
+    #self.shape = [128, 10, 12, 8]
     self.linear2 = nn.Linear(128, self.shape[0] * self.shape[1] * self.shape[2] * self.shape[3])
 
     #self.vu = nn.Sequential(nn.ReLU(inplace=True),
@@ -122,6 +122,7 @@ class Vae(nn.Module):
     x2 = self.linear(x1)
     mu = x2[:128]
     logvar = x2[-128:]
+    print(f'max(logvar): {torch.max(logvar)}')
     return mu, logvar
 
   def reparameterize(self, mu, logvar):
@@ -247,33 +248,13 @@ class Decoder(nn.Module):
 
     return output
 
-def get_n_params(model):
-    pp=0
-    for p in list(model.parameters()):
-        nn=1
-        print(p.get_device())
-        for s in list(p.size()):
-            nn = nn*s
-        pp += nn
-    return pp
 
-class UNet(nn.Module):
+class VAEReg(nn.Module):
   def __init__(self):
-    super(UNet, self).__init__()
+    super(VAEReg, self).__init__()
     self.encoder = Encoder()
     self.decoder = Decoder()
-
-  def forward(self, x):
-    enc_out = self.encoder(x)
-    output = self.decoder(enc_out)
-    return output
-
-class VAEreg(nn.Module):
-  def __init__(self):
-    super(VAEreg, self).__init__()
-    self.encoder = Encoder()
-    self.decoder = Decoder()
-    self.vae = Vae()
+    self.vae = VAE()
 
   def forward(self, x):
     enc_out = self.encoder(x)
@@ -283,7 +264,6 @@ class VAEreg(nn.Module):
             'recon':recon,
             'mu':mu, 
             'logvar':logvar}
-
 
 class ReconReg(nn.Module):
   def __init__(self):

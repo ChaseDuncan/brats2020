@@ -21,6 +21,7 @@ from utils import (
     )
 
 from models.cascade_net import CascadeNet
+from models.vaereg import VAEReg
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
@@ -54,11 +55,17 @@ parser.add_argument('--loss', type=str, default='avgdice',
     choices=['dice', 'recon', 'avgdice', 'vae'], 
     help='which loss to use during training (default: avgdice)')
 
-parser.add_argument('--data_par', action='store_true', 
-    help='data parellelism flag (default: off)')
+parser.add_argument('-a', '--augment_data', action='store_true', 
+    help='augment training data with mirroring, shifts, and scaling (default: off)')
 
 parser.add_argument('--mixed_precision', action='store_true', 
     help='mixed precision flag (default: off)')
+
+parser.add_argument('-b', '--debug', action='store_true', 
+    help='use debug mode which only uses a couple examples for training and testing (default: off)')
+
+parser.add_argument('-L', '--large_patch', action='store_true', 
+        help='use patch size 160x192x128 (default patch size: 128x128x128)')
 
 parser.add_argument('--cross_val', action='store_true', 
     help='use train/val split of full dataset (default: off)')
@@ -99,6 +106,8 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
 parser.add_argument('--lr_add_cnst', type=float, default=1e-6, metavar='LR', 
     help='constant to add to learning rate each epoch (default: 1e-6)')
 
+parser.add_argument('-m', action='store', dest='msg', nargs='*', type=str, required=True)
+
 # Currently unused.
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
@@ -126,7 +135,9 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write('\n')
 
 dims=[128, 128, 128]
-#dims=[160, 192, 128]
+if args.large_patch:
+    dims=[160, 192, 128]
+
 if args.cross_val:
     filenames=[]
     for (dirpath, dirnames, files) in os.walk(args.data_dir):
@@ -157,7 +168,7 @@ if args.cross_val:
         return modes, segs
 
     train_modes, train_segs = proc_split(train_split)
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True,
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=args.augment_data,
             modes=train_modes, segs=train_segs)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
@@ -169,7 +180,7 @@ if args.cross_val:
                             shuffle=True, num_workers=args.num_workers)
 else:
     # train without cross_val
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True)
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=args.augment_data)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False)
@@ -183,6 +194,9 @@ if args.model == 'MonoUNet':
 if args.model == 'CascadeNet':
     model = CascadeNet()
     loss = losses.CascadeAvgDiceLoss()
+if args.model == 'VAEReg':
+    model = VAEReg()
+    loss = losses.VAEDiceLoss()
 
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -206,6 +220,7 @@ writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = None
 
 swa_start = 1
+opt = None
 if args.swa:
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
     opt = SWA(optimizer, swa_start=swa_start, swa_freq=1, swa_lr=0.05)
@@ -235,29 +250,34 @@ for epoch in range(start_epoch, args.epochs):
                 opt, 
                 trainloader, 
                 device, 
-                mixed_precision=args.mixed_precision)
+                mixed_precision=args.mixed_precision,
+                debug=args.debug)
     else:
          train(model, 
                 loss, 
                 optimizer, 
                 trainloader, 
                 device, 
-                mixed_precision=args.mixed_precision)
+                mixed_precision=args.mixed_precision,
+                debug=args.debug)
        
     if args.swa and epoch > swa_start:
         opt.swap_swa_sgd()
 
     if (epoch + 1) % args.save_freq == 0:
-        opt.bn_update(trainloader, model)
+        if args.swa:
+            opt.bn_update(trainloader, model)
         save_checkpoint(
                 f'{args.dir}/checkpoints',
                 epoch + 1,
                 state_dict=model.state_dict(),
-                optimizer=optimizer.state_dict()
+                optimizer=optimizer.state_dict(),
+                msg=args.msg
                 )
     
     if (epoch + 1) % args.eval_freq == 0:
-        opt.bn_update(trainloader, model)
+        if args.swa:
+            opt.bn_update(trainloader, model)
         # Evaluate on training data
         #train_val = validate(model, loss, trainloader, device)
         #time_ep = time.time() - time_ep
@@ -273,7 +293,7 @@ for epoch in range(start_epoch, args.epochs):
         #        columns, tablefmt="simple", floatfmt="8.4f")
         #print(table)
         model.eval()
-        eval_val = validate(model, loss, valloader, device)
+        eval_val = validate(model, loss, valloader, device, debug=args.debug)
 
         writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
@@ -287,7 +307,7 @@ for epoch in range(start_epoch, args.epochs):
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
 
-        eval_values = ['eval', epoch + 0, eval_val['loss'].data] \
+        eval_values = ['eval', epoch + 1, eval_val['loss'].data] \
           + eval_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
 

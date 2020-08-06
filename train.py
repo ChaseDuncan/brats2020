@@ -21,6 +21,7 @@ from utils import (
     )
 
 from models.cascade_net import CascadeNet
+from models.vaereg import VAEReg
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
@@ -59,6 +60,9 @@ parser.add_argument('-a', '--augment_data', action='store_true',
 
 parser.add_argument('--mixed_precision', action='store_true', 
     help='mixed precision flag (default: off)')
+
+parser.add_argument('-b', '--debug', action='store_true', 
+    help='use debug mode which only uses a couple examples for training and testing (default: off)')
 
 parser.add_argument('-L', '--large_patch', action='store_true', 
         help='use patch size 160x192x128 (default patch size: 128x128x128)')
@@ -190,6 +194,9 @@ if args.model == 'MonoUNet':
 if args.model == 'CascadeNet':
     model = CascadeNet()
     loss = losses.CascadeAvgDiceLoss()
+if args.model == 'VAEReg':
+    model = VAEReg()
+    loss = losses.VAEDiceLoss()
 
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -213,6 +220,7 @@ writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = None
 
 swa_start = 1
+opt = None
 if args.swa:
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
     opt = SWA(optimizer, swa_start=swa_start, swa_freq=1, swa_lr=0.05)
@@ -242,20 +250,23 @@ for epoch in range(start_epoch, args.epochs):
                 opt, 
                 trainloader, 
                 device, 
-                mixed_precision=args.mixed_precision)
+                mixed_precision=args.mixed_precision,
+                debug=args.debug)
     else:
          train(model, 
                 loss, 
                 optimizer, 
                 trainloader, 
                 device, 
-                mixed_precision=args.mixed_precision)
+                mixed_precision=args.mixed_precision,
+                debug=args.debug)
        
     if args.swa and epoch > swa_start:
         opt.swap_swa_sgd()
 
     if (epoch + 1) % args.save_freq == 0:
-        opt.bn_update(trainloader, model)
+        if args.swa:
+            opt.bn_update(trainloader, model)
         save_checkpoint(
                 f'{args.dir}/checkpoints',
                 epoch + 1,
@@ -265,7 +276,8 @@ for epoch in range(start_epoch, args.epochs):
                 )
     
     if (epoch + 1) % args.eval_freq == 0:
-        opt.bn_update(trainloader, model)
+        if args.swa:
+            opt.bn_update(trainloader, model)
         # Evaluate on training data
         #train_val = validate(model, loss, trainloader, device)
         #time_ep = time.time() - time_ep
@@ -281,7 +293,7 @@ for epoch in range(start_epoch, args.epochs):
         #        columns, tablefmt="simple", floatfmt="8.4f")
         #print(table)
         model.eval()
-        eval_val = validate(model, loss, valloader, device)
+        eval_val = validate(model, loss, valloader, device, debug=args.debug)
 
         writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
@@ -295,7 +307,7 @@ for epoch in range(start_epoch, args.epochs):
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
 
-        eval_values = ['eval', epoch + 0, eval_val['loss'].data] \
+        eval_values = ['eval', epoch + 1, eval_val['loss'].data] \
           + eval_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
 

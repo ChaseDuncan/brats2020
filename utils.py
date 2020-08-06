@@ -17,7 +17,8 @@ import torch.utils.data.sampler as sampler
 from tqdm import tqdm
 from models import (
         models,
-        cascade_net
+        cascade_net,
+        vaereg
         )
 #from apex import amp
 from apex_dummy import amp
@@ -175,10 +176,12 @@ def process_segs(seg):
         seg_et[np.where(seg[b, :, :, :] == 3)] = 1
         seg_t.append(seg_et)
         segs.append(seg_t)
+
     return torch.from_numpy(np.array(segs))
 
 # all the training and validation functions need to get out of here
-def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False):
+def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False, 
+        debug=False):
     total_loss = 0
     model.train()
     for src, target in tqdm(train_dataloader):
@@ -188,6 +191,7 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         output = model(src)
         cur_loss = loss(output, {'target':target, 'src':src})
         total_loss += cur_loss
+        #print(f'total_loss {total_loss}')
         cur_loss.backward()
         optimizer.step()
         if debug:
@@ -198,8 +202,8 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         #else:
         #    cur_loss.backward()
         #    optimizer.step()
-   
-def _validate(model, loss, dataloader, device):
+ 
+def validate(model, loss, dataloader, device, debug=False):
     loss_total = 0
     dice_total = 0
     examples_total = 0
@@ -212,10 +216,11 @@ def _validate(model, loss, dataloader, device):
             src, target = src.to(device, dtype=torch.float),\
                 target.to(device, dtype=torch.float)
             output = model(src)
-
             loss_total += loss(output, {'target':target, 'src':src}) 
             if isinstance(model, models.MonoUNet): 
                 dice_total += dice_score(output, target)
+                #print(f'dice_total: {dice_total}')
+                dice_total += dice_score(output['seg_map'], target)
 
             ####### 
             # CascadeNet
@@ -225,17 +230,9 @@ def _validate(model, loss, dataloader, device):
             if debug:
               break
         avg_dice = dice_total / examples_total
-        # still need to work this math out
-        #avg_loss = loss_total / examples_total 
         avg_loss = loss_total / len(dataloader)
-    return avg_dice, avg_loss
-        
-
-def validate(model, loss, data_loader, device):
-    dice_avg, loss_avg =\
-        _validate(model, loss, data_loader, device)
     
-    return {'dice':dice_avg, 
-            'loss':loss_avg
+    return {'dice':avg_dice, 
+            'loss':avg_loss
             }
 

@@ -42,6 +42,7 @@ class ResNetBlock(nn.Module):
         out += residual
         return out
 
+
 class Encoder(nn.Module):
     def __init__(self, input_channels=4):
         super(Encoder, self).__init__()
@@ -112,14 +113,13 @@ class Decoder(nn.Module):
         sp1 = self.block13(sp1)
         #sp1 = self.block14(sp1)
         output = self.sig(self.cf_final(sp1))
-
+        
         return output
      
-# deprecated
 class MonoUNet(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels=4):
         super(MonoUNet, self).__init__()
-        self.encoder = Encoder()
+        self.encoder = Encoder(input_channels=input_channels)
         self.decoder = Decoder()
 
     def forward(self, x):

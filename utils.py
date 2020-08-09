@@ -219,6 +219,7 @@ def validate(model, loss, dataloader, device, debug=False):
             loss_total += loss(output, {'target':target, 'src':src}) 
             if isinstance(model, models.MonoUNet): 
                 dice_total += dice_score(output, target)
+            if isinstance(model, vaereg.VAEReg):
                 #print(f'dice_total: {dice_total}')
                 dice_total += dice_score(output['seg_map'], target)
 

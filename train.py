@@ -73,6 +73,9 @@ parser.add_argument('--cross_val', action='store_true',
 parser.add_argument('--swa', action='store_true', 
     help='use stochastic weight averaging during training (default: off)')
 
+parser.add_argument('-e', '--enhance_feat', action='store_true', 
+    help='include t1ce/t1 in input and loss.')
+
 parser.add_argument('--seed', type=int, default=1, metavar='S', 
     help='random seed (default: 1)')
 
@@ -106,7 +109,8 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
 parser.add_argument('--lr_add_cnst', type=float, default=1e-6, metavar='LR', 
     help='constant to add to learning rate each epoch (default: 1e-6)')
 
-parser.add_argument('-m', action='store', dest='msg', nargs='*', type=str, required=True)
+parser.add_argument('-m', '--message', action='store', dest='msg', nargs='*', type=str,
+        help='a message to log in command.sh. might need to be last argument to work.')
 
 # Currently unused.
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
@@ -147,8 +151,7 @@ if args.cross_val:
                       sorted([ f for f in filenames if "t1ce.nii.gz" in f ]),
                       sorted([ f for f in filenames if "t2.nii.gz" in f ]),
                       sorted([ f for f in filenames if "flair.nii.gz" in f ]),
-                        sorted([ f for f in filenames if "seg.nii.gz" in f ])
-
+                      sorted([ f for f in filenames if "seg.nii.gz" in f ])
             ]
     joined_files = list(zip(*modes))
 
@@ -180,7 +183,8 @@ if args.cross_val:
                             shuffle=True, num_workers=args.num_workers)
 else:
     # train without cross_val
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=args.augment_data)
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, 
+            augment_data=args.augment_data, enhance_feat=args.enhance_feat)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False)
@@ -189,14 +193,20 @@ else:
 
 
 if args.model == 'MonoUNet':
-    model = MonoUNet()
-    loss = losses.AvgDiceLoss()
+    if args.enhance_feat:
+        model = MonoUNet(input_channels=5)
+        loss = losses.AvgDiceEnhanceLoss(device)
+    else:
+        model = MonoUNet()
+        loss = losses.AvgDiceLoss()
+
 if args.model == 'CascadeNet':
     model = CascadeNet()
     loss = losses.CascadeAvgDiceLoss()
 if args.model == 'VAEReg':
     model = VAEReg()
     loss = losses.VAEDiceLoss()
+
 
 optimizer = \
     optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -228,7 +238,6 @@ else:
     # this must occur before giving the optimizer to amp
     lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
     scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda=lmbda)
-    #scheduler = PolynomialLR(optimizer, args.epochs, last_epoch=start_epoch-1)
 
 # model has to be on device before passing to amp
 if args.mixed_precision:
@@ -278,20 +287,6 @@ for epoch in range(start_epoch, args.epochs):
     if (epoch + 1) % args.eval_freq == 0:
         if args.swa:
             opt.bn_update(trainloader, model)
-        # Evaluate on training data
-        #train_val = validate(model, loss, trainloader, device)
-        #time_ep = time.time() - time_ep
-        #memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
-        #train_values = ['train', epoch + 1, lr*1000, train_val['loss'].data] \
-        #  + train_val['dice'].tolist()\
-        #  + [ time_ep, memory_usage] 
-        #eval_values = ['eval', epoch + 1, lr*1000, eval_val['loss'].data] \
-        #  + eval_val['dice'].tolist()\
-        #  + [ time_ep, memory_usage] 
-
-        #table = tabulate.tabulate([train_values, eval_values], 
-        #        columns, tablefmt="simple", floatfmt="8.4f")
-        #print(table)
         model.eval()
         eval_val = validate(model, loss, valloader, device, debug=args.debug)
 
@@ -300,9 +295,6 @@ for epoch in range(start_epoch, args.epochs):
         writer.add_scalar(f'{args.dir}/logs/dice/eval/et', et, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/wt', wt, epoch)
         writer.add_scalar(f'{args.dir}/logs/dice/eval/tc', tc, epoch)
-        #writer.add_scalar(f'{args.dir}/logs/dice/eval/et_lr', et, lr)
-        #writer.add_scalar(f'{args.dir}/logs/dice/eval/wt_lr', wt, lr)
-        #writer.add_scalar(f'{args.dir}/logs/dice/eval/tc_lr', tc, lr)
 
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
@@ -315,16 +307,6 @@ for epoch in range(start_epoch, args.epochs):
                 columns, tablefmt="simple", floatfmt="8.4f")
         print(table)
    
-        # Log validation
-        #writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
-        #et, wt, tc = train_val['dice']
-        #writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
-        #writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
-        #writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
-        #writer.add_scalar(f'{args.dir}/logs/dice/train/et_lr', et, lr)
-        #writer.add_scalar(f'{args.dir}/logs/dice/train/wt_lr', wt, lr)
-        #writer.add_scalar(f'{args.dir}/logs/dice/train/tc_lr', tc, lr)
-
     writer.flush()
     if not args.swa:
         scheduler.step()

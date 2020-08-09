@@ -7,33 +7,6 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 from abc import abstractmethod
 
-#from batchgenerators.utilities.file_and_folder_operations import *
-#class BraTSValidation(Dataset):
-#    def __init__(self, data_dir):
-#        self.patients = get_list_of_patients(data_dir)        
-#        self.data_dir = data_dir
-#        
-#    def __len__(self):
-#        return len(self.patients)
-#    
-#    def __getitem__(self, idx):
-#        data, metadata = load_patient(os.path.join(self.data_dir, self.patients[idx]))
-#        patient_id = self.patients[idx].split('/')[-1]
-#        metadata['patient_id'] = patient_id
-#        return data, metadata
-#
-#
-#def get_list_of_patients(preprocessed_data_folder):
-#    npy_files = subfiles(preprocessed_data_folder, suffix=".npy", join=True)
-#    # remove npy file extension
-#    patients = [i[:-4] for i in npy_files]
-#    return patients
-#
-#
-#def load_patient(patient):
-#    data = np.load(patient + ".npy")
-#    metadata = load_pickle(patient + ".pkl")
-#    return data, metadata
 
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, dims=[240, 240, 155], modes=None, segs=None):
@@ -131,10 +104,11 @@ class BraTSTrainDataset(BraTSDataset):
     def __init__(self, data_dir, 
         dims=[240, 240, 155], 
         augment_data = True, 
-        clinical_segs=True,
+        clinical_segs=True, enhance_feat=True, 
         modes=None, segs=None):
         BraTSDataset.__init__(self, data_dir, dims, modes=modes, segs=segs)
         self.clinical_segs = clinical_segs
+        self.enhance_feat=enhance_feat
 
         self.augment_data = augment_data
 
@@ -152,7 +126,6 @@ class BraTSTrainDataset(BraTSDataset):
         for m in self.modes:
             image = nib.load(m[idx])
             images.append(image)
-
             header = image.header
         return images, header
 
@@ -170,6 +143,13 @@ class BraTSTrainDataset(BraTSDataset):
         # header data should be handled in preprocessing, not here
         images, header = self._load_images(idx) 
         data = [torch.from_numpy(self._transform_data(img)) for img in images]
+        if self.enhance_feat:
+            # t1 idx: 0 t1ce idx: 1
+            e = data[1] / (data[0] + 1e-32)
+            e[e<0] = 0 
+            e[e>0] = 1
+            data.append(e) 
+
         src = torch.stack(data)
 
         target = []
@@ -233,8 +213,10 @@ class BraTSTrainDataset(BraTSDataset):
 
 class BraTSAnnotationDataset(BraTSDataset):
     def __init__(self, data_dir,  
-        dims=[240, 240, 155], augment_data = True, clinical_segs=True, modes=None):
+        dims=[240, 240, 155], augment_data = True, clinical_segs=True,
+        enhance_feat=False, modes=None):
         BraTSDataset.__init__(self, data_dir, modes=modes, dims=dims)
+        self.enhance_feat=enhance_feat
 
     def _patient(self, f):
         return f.split('/')[-2]
@@ -243,6 +225,13 @@ class BraTSAnnotationDataset(BraTSDataset):
         # header data should be handled in preprocessing, not here
         images, header = self._load_images(idx) 
         data = [torch.from_numpy(self._transform_data(img)) for img in images]
+        if self.enhance_feat:
+            # t1 idx: 0 t1ce idx: 1
+            e = data[1] / (data[0] + 1e-32)
+            e[e<0] = 0 
+            e[e>0] = 1
+            data.append(e) 
+
         src = torch.stack(data)
 
         ## this has to be on for outputing segmentations

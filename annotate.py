@@ -15,6 +15,8 @@ import nibabel as nib
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
 parser.add_argument('--model_dir', type=str, required=True,
         help='Data directory for model.')
+parser.add_argument('--hier', type=str, default=None,
+        help='Path to second model in hierarchy(default: None')
 parser.add_argument('--output_dir', type=str, default=None,
         help='Path to save annotations to (default: args.model/annotations/')
 parser.add_argument('--data_dir', type=str,
@@ -25,6 +27,8 @@ parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
                 checkpoint with the largest epoch in its name.')
 parser.add_argument('-g', '--device', type=int, default=-1, metavar='N',
         help='Which device to use for annotation. (default: cpu)')
+parser.add_argument('-g2', '--device2', type=int, default=-1, metavar='N',
+        help='Which device to use for second model in hierarchy. (default: cpu)')
 parser.add_argument('-t', '--thresh', type=float, default=0.5, metavar='p',
         help='threhold on probability for predicting true (default: 0.5)')
 parser.add_argument('-e', '--enhance_feat', action='store_true', 
@@ -64,19 +68,24 @@ if args.model == 'MonoUNet':
     else:
         model = MonoUNet()
 
-checkpoint = torch.load(checkpoint_file, map_location=device)
-model.load_state_dict(checkpoint['state_dict'], strict=False)
-model = model.to(device)
+    checkpoint = torch.load(checkpoint_file, map_location=device)
+    model.load_state_dict(checkpoint['state_dict'], strict=False)
+    model = model.to(device)
 
+if args.hier:
+    model = HierarchicalNet(checkpoint_file, args.hier, device)
+    model.to(device)
+
+dims=[160, 192, 128]
 brats_data = BraTSAnnotationDataset(args.data_dir, 
-        dims=[160, 192, 128], enhance_feat=args.enhance_feat)
+        dims=dims, enhance_feat=args.enhance_feat)
 dataloader = DataLoader(brats_data)
+
 with torch.no_grad():
     model.eval()
-    dims=[160, 192, 128]
     for d in tqdm(dataloader):
         src = d['data'].to(device, dtype=torch.float)
-        output = model(src)
+        output, _ = model(src)
 
         x_off = int((240 - dims[0]) / 2)
         y_off = int((240 - dims[1]) / 2)

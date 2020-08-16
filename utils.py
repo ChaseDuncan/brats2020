@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader
 from data_loader import BraTSTrainDataset
 from losses import (
     dice_score,
-    agg_dice_score
+    DiceBCELoss,
+    BCELoss
     )
 import torch.utils.data.sampler as sampler
 from tqdm import tqdm
@@ -180,7 +181,7 @@ def process_segs(seg):
     return torch.from_numpy(np.array(segs))
 
 # all the training and validation functions need to get out of here
-def train(model, loss, optimizer, train_dataloader, device, mixed_precision=False, 
+def train(model, loss, optimizer, train_dataloader, device, cascade_train=False, mixed_precision=False, 
         debug=False):
     total_loss = 0
     model.train()
@@ -188,8 +189,14 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         optimizer.zero_grad()
         src, target = src.to(device, dtype=torch.float),\
             target.to(device, dtype=torch.float)
-        output = model(src)
-        cur_loss = loss(output, {'target':target, 'src':src})
+
+        if cascade_train:
+            src = torch.cat((src, target[:, 1, :, :, :].unsqueeze(1)), 1)
+        preds, logits = model(src)
+        if isinstance(loss, DiceBCELoss) or isinstance(loss, BCELoss):
+            cur_loss = loss(preds, logits, {'target':target, 'src':src})
+        else:
+            cur_loss = loss(preds, {'target':target, 'src':src})
         total_loss += cur_loss
         #print(f'total_loss {total_loss}')
         cur_loss.backward()
@@ -203,30 +210,37 @@ def train(model, loss, optimizer, train_dataloader, device, mixed_precision=Fals
         #    cur_loss.backward()
         #    optimizer.step()
  
-def validate(model, loss, dataloader, device, debug=False):
+
+def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
     loss_total = 0
     dice_total = 0
     examples_total = 0
 
     with torch.no_grad():
         model.eval()
-
         for src, target in tqdm(dataloader):
             examples_total+=src.size()[0]
             src, target = src.to(device, dtype=torch.float),\
                 target.to(device, dtype=torch.float)
-            output = model(src)
-            loss_total += loss(output, {'target':target, 'src':src}) 
+            if cascade_train:
+                src=torch.cat((src, target[:, 1, :, :, :].unsqueeze(1)), 1)
+            preds, logits = model(src)
+
+            if isinstance(loss, DiceBCELoss) or isinstance(loss, BCELoss):
+                cur_loss = loss(preds, logits, {'target':target, 'src':src})
+            else:
+                cur_loss = loss(preds, {'target':target, 'src':src})
             if isinstance(model, models.MonoUNet): 
-                dice_total += dice_score(output, target)
-            if isinstance(model, vaereg.VAEReg):
-                #print(f'dice_total: {dice_total}')
-                dice_total += dice_score(output['seg_map'], target)
+                dice_total += dice_score(preds, target)
+            loss_total+=cur_loss
+            #if isinstance(model, vaereg.VAEReg):
+            #    #print(f'dice_total: {dice_total}')
+            #    dice_total += dice_score(output['seg_map'], target)
 
             ####### 
             # CascadeNet
             if isinstance(model, cascade_net.CascadeNet):
-                average_seg = 0.5*(output['deconv'] + output['biline'])
+                average_seg = 0.5*(preds['deconv'] + preds['biline'])
                 dice_total += dice_score(average_seg, target)
             if debug:
               break

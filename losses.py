@@ -44,7 +44,30 @@ class VAEDiceLoss(nn.Module):
         #    + 0.1*F.mse_loss(output['recon'], targets['src'])\
         #    + 0.1*self.kl(output['mu'], output['logvar'], 256)
 
+class DiceBCELoss(nn.Module):
+    def __init__(self):
+        super(DiceBCELoss, self).__init__()
+        self.dice = AvgDiceLoss()
+        self.bce = nn.BCEWithLogitsLoss()
 
+    def forward(self, preds, logits, targets):
+        target = targets['target']
+        return self.dice(preds, targets) + self.bce(logits[:, 0, :, :, :].squeeze(), target[:, 0, :, :, :].squeeze())\
+                + self.bce(logits[:, 1, :, :, :].squeeze(), target[:, 1, :, :, :].squeeze())\
+                + self.bce(logits[:, 2, :, :, :].squeeze(), target[:, 2, :, :, :].squeeze())
+
+class BCELoss(nn.Module):
+    def __init__(self):
+        super(BCELoss, self).__init__()
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def forward(self, preds, logits, targets):
+        target = targets['target']
+        return self.bce(logits[:, 0, :, :, :].squeeze(), target[:, 0, :, :, :].squeeze())\
+                + self.bce(logits[:, 1, :, :, :].squeeze(), target[:, 1, :, :, :].squeeze())\
+                + self.bce(logits[:, 2, :, :, :].squeeze(), target[:, 2, :, :, :].squeeze())
+
+        
 class AvgDiceLoss(nn.Module):
     def __init__(self):
         super(AvgDiceLoss, self).__init__()
@@ -54,6 +77,38 @@ class AvgDiceLoss(nn.Module):
         proportions = dice_score(preds, target)
         avg_dice = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
         return 1 - avg_dice
+
+
+class WTLoss(nn.Module):
+    def __init__(self):
+        super(WTLoss, self).__init__()
+    
+    def forward(self, preds, targets):
+        target = targets['target']
+        wt_preds = preds.new_zeros(preds.size()) 
+        wt_targets = target.new_zeros(target.size()) 
+        wt_preds[:, 0, :, :, :] = wt_preds[:, 1, :, :, :] = wt_preds[:, 2, :, :, :] = preds[:, 1, :, :, :]
+        wt_targets[:, 0, :, :, :] = wt_targets[:, 1, :, :, :] = wt_targets[:, 2, :, :, :] = target[:, 1, :, :, :]
+        proportions = dice_score(wt_preds, wt_targets)
+        wt = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
+        return 1 - wt
+
+
+class CascadeAvgDiceLoss(nn.Module):
+    def __init__(self, coarse_wt_only=False):
+        super(CascadeAvgDiceLoss, self).__init__()
+        if coarse_wt_only:
+            self.coarse_loss = WTLoss()
+        else:
+            self.coarse_loss = AvgDiceLoss()
+        self.deconv_loss = AvgDiceLoss()
+        self.biline_loss = AvgDiceLoss()
+
+    def forward(self, output, targets):
+        return self.coarse_loss(output['coarse'], targets)\
+                + self.biline_loss(output['biline'], targets)\
+                + self.deconv_loss(output['deconv'], targets)
+
 
 class AvgDiceEnhanceLoss(nn.Module):
     def __init__(self, device):
@@ -97,19 +152,7 @@ class AvgDiceEnhanceLoss(nn.Module):
                 torch.squeeze(targets['src'][:, -1, :, :, :])
                 )
         enh_loss_batch_avg = torch.einsum('b->', enh_loss) / len(enh_loss)
-        return 0.5*ad_loss + 0.5*enh_loss_batch_avg
-
-class CascadeAvgDiceLoss(nn.Module):
-    def __init__(self):
-        super(CascadeAvgDiceLoss, self).__init__()
-        self.coarse_loss = AvgDiceLoss()
-        self.deconv_loss = AvgDiceLoss()
-        self.biline_loss = AvgDiceLoss()
-
-    def forward(self, output, targets):
-        return 0.33*(self.coarse_loss(output['coarse'], targets)\
-                + self.biline_loss(output['biline'], targets)\
-                + self.deconv_loss(output['deconv'], targets))
+        return 0.9*ad_loss + 0.1*enh_loss_batch_avg
 
 
 def agg_dice_score(preds, targets):

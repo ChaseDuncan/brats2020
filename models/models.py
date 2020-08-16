@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from .model_utils import *
+from .cascade_net import DeconvDecoder
 
 class SimpleResNetBlock(nn.Module):
     def __init__(self, channels, num_groups=32):
@@ -46,7 +47,7 @@ class ResNetBlock(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, input_channels=4):
         super(Encoder, self).__init__()
-        self.dropout = nn.Dropout3d()
+        self.dropout = nn.Dropout3d(p=0.2)
         self.sig = nn.Sigmoid()
         self.initLayer = nn.Conv3d(input_channels, 32, 
                 kernel_size=3, stride=1, padding=1)
@@ -112,16 +113,42 @@ class Decoder(nn.Module):
         sp1 = x['spatial_level_1'] + self.up(self.cf3(sp2))
         sp1 = self.block13(sp1)
         #sp1 = self.block14(sp1)
-        output = self.sig(self.cf_final(sp1))
-        
-        return output
+        logits = self.cf_final(sp1)
+        return self.sig(logits), logits
      
 class MonoUNet(nn.Module):
-    def __init__(self, input_channels=4):
+    def __init__(self, input_channels=4, upsampling='bilinear'):
         super(MonoUNet, self).__init__()
         self.encoder = Encoder(input_channels=input_channels)
-        self.decoder = Decoder()
+        if upsampling == 'deconv':
+            self.decoder = DeconvDecoder()
+        else:
+            self.decoder = Decoder()
 
     def forward(self, x):
         x = self.encoder(x)
         return self.decoder(x)
+
+class HierarchicalNet(nn.Module):
+    def __init__(self, cp1, cp2, device):
+        super(HierarchicalNet, self).__init__()
+        self.model1 = MonoUNet()
+        self.model2 = MonoUNet(input_channels=5)
+
+        checkpoint1 = torch.load(cp1, map_location=device)
+        self.model1.load_state_dict(checkpoint1['state_dict'], strict=False)
+        checkpoint2 = torch.load(cp2, map_location=device)
+        self.model2.load_state_dict(checkpoint2['state_dict'], strict=False)
+
+    def forward(self, x):
+        output, _ = self.model1(x)
+        x = torch.cat((x, output[:, 1, :, :, :].unsqueeze(1)), 1)
+        output2, _ = self.model2(x)
+        output2[:, 1, :, :, :] = output[:, 1, :, :, :]
+        output = output2
+        return output, None
+
+
+
+
+

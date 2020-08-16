@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
 from models.models import *
-from data_loader import BraTSTrainDataset
+from data_loader import BraTSTrainDataset, BraTSSelfTrainDataset
 
 #from apex import amp
 from apex_dummy import amp
@@ -38,11 +38,14 @@ lr_add_cnst = 1e-6
 parser.add_argument('--dir', type=str, required=True, metavar='PATH',
     help='The directory to write all output to.')
 
-parser.add_argument('--data_dir', type=str, required=True, metavar='PATH TO DATA',
+parser.add_argument('--data_dir', type=str, default='/dev/shm/MICCAI_BraTS2020_TrainingData', metavar='PATH TO DATA',
     help='Path to where the data is located.')
 
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
                         help='model class (default: None)')
+parser.add_argument('--coarse_wt_only', action='store_true', 
+    help='only use whole tumor for loss function for coarse layer of CascadeNet.\
+            only meaningful if args.model is CascadeNet (default: off)')
 
 parser.add_argument('--device', type=int, required=True, metavar='N',
     help='Which device to use for training.')
@@ -58,8 +61,17 @@ parser.add_argument('--loss', type=str, default='avgdice',
 parser.add_argument('-a', '--augment_data', action='store_true', 
     help='augment training data with mirroring, shifts, and scaling (default: off)')
 
+parser.add_argument('--throw_no_et_sets', action='store_true', 
+    help='throw out datasets that do not have ET labels (default: off)')
+
 parser.add_argument('--mixed_precision', action='store_true', 
     help='mixed precision flag (default: off)')
+
+parser.add_argument('--cascade_train', action='store_true', 
+    help='train cascade model, append wt annotation to input (default: off)')
+
+parser.add_argument('--seedtest', action='store_true', 
+    help='test for random seeds (default: off)')
 
 parser.add_argument('-b', '--debug', action='store_true', 
     help='use debug mode which only uses a couple examples for training and testing (default: off)')
@@ -70,17 +82,28 @@ parser.add_argument('-L', '--large_patch', action='store_true',
 parser.add_argument('--cross_val', action='store_true', 
     help='use train/val split of full dataset (default: off)')
 
-parser.add_argument('--swa', action='store_true', 
-    help='use stochastic weight averaging during training (default: off)')
+parser.add_argument('--bce', action='store_true', 
+    help='use bce term in loss (default: off)')
+
+parser.add_argument('--swa', type=int, default=0, metavar='n', 
+    help='use stochastic weight averaging during training.\
+            n=0 for no swa, n>0 use swa starting at epoch n. (default: off)')
 
 parser.add_argument('-e', '--enhance_feat', action='store_true', 
     help='include t1ce/t1 in input and loss.')
 
-parser.add_argument('--seed', type=int, default=1, metavar='S', 
-    help='random seed (default: 1)')
+parser.add_argument('--selftrain', action='store_true',
+        help='use Decathlon dataset for self-training.')
 
-parser.add_argument('--wd', type=float, default=1e-4, 
-    help='weight decay (default: 1e-4)')
+parser.add_argument('--selftrain_n', type=int, default=50, metavar='n',
+        help='number of unsupervised examples to use for self train. (default: 50)')
+
+rand_seed = random.randint(0, 2**32-1)
+parser.add_argument('--seed', type=int, default=rand_seed, metavar='S', 
+    help='random seed (default: random.randint(0, 2**32 - 1))')
+
+parser.add_argument('--wd', type=float, default=1e-5, 
+    help='weight decay (default: 1e-5)')
 
 parser.add_argument('--resume', type=str, default=None, metavar='PATH',
                         help='checkpoint to resume training from (default: None)')
@@ -112,12 +135,13 @@ parser.add_argument('--lr_add_cnst', type=float, default=1e-6, metavar='LR',
 parser.add_argument('-m', '--message', action='store', dest='msg', nargs='*', type=str,
         help='a message to log in command.sh. might need to be last argument to work.')
 
-# Currently unused.
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
 
-args = parser.parse_args()
+parser.add_argument('--nesterov', action='store_true',
+        help='use sgd with nesterov instead of adam. (default: adam)')
 
+args = parser.parse_args()
 if args.device >= 0:
     device = torch.device(f'cuda:{args.device}')
 else:
@@ -125,7 +149,7 @@ else:
 
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
-
+print(f'seed: {args.seed}')
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -136,11 +160,55 @@ torch.backends.cudnn.deterministic = True
 
 with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))
-  f.write('\n')
+  f.write(f'\n\nseed: {args.seed}\n')
 
 dims=[128, 128, 128]
 if args.large_patch:
     dims=[160, 192, 128]
+
+if args.model == 'MonoUNet':
+    if args.enhance_feat:
+        model = MonoUNet(input_channels=5, upsampling=args.upsampling)
+        loss = losses.AvgDiceEnhanceLoss(device)
+    else:
+        if args.cascade_train:
+            model = MonoUNet(input_channels=5, upsampling=args.upsampling)
+        else:
+            model = MonoUNet(upsampling=args.upsampling)
+        loss = losses.AvgDiceLoss()
+    if args.bce:
+        #loss = losses.DiceBCELoss()
+        loss = losses.BCELoss()
+
+if args.model == 'CascadeNet':
+    model = CascadeNet()
+    loss = losses.CascadeAvgDiceLoss(coarse_wt_only=args.coarse_wt_only)
+
+if args.model == 'VAEReg':
+    model = VAEReg()
+    loss = losses.VAEDiceLoss()
+
+if args.nesterov:
+    optimizer = \
+        optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.wd, nesterov=True)
+else:
+    optimizer = \
+        optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+
+model = model.to(device)
+start_epoch = 0
+if args.resume:
+    print(f'Resume training from {args.resume}')
+    checkpoint = torch.load(args.resume)
+    start_epoch = checkpoint["epoch"]
+    model.load_state_dict(checkpoint["state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer"])    
+
+if args.pretrain:
+    print(f'Begin training from pretrained model {args.pretrain}')
+    checkpoint = torch.load(args.pretrain)
+    model.load_state_dict(checkpoint["state_dict"])
+
 
 if args.cross_val:
     filenames=[]
@@ -181,59 +249,34 @@ if args.cross_val:
             modes=val_modes, segs=val_segs)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
-else:
-    # train without cross_val
-    train_data = BraTSTrainDataset(args.data_dir, dims=dims, 
-            augment_data=args.augment_data, enhance_feat=args.enhance_feat)
+elif args.selftrain:
+    train_data = BraTSSelfTrainDataset(args.data_dir, model, device, n=args.selftrain_n, dims=dims,   
+            augment_data=args.augment_data)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
-    val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False)
+    val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=False, augment_data=False)
+    valloader = DataLoader(val_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+else:
+    # train without cross_val or self-training
+    train_data = BraTSTrainDataset(args.data_dir, dims=dims, 
+            augment_data=args.augment_data, enhance_feat=args.enhance_feat, throw_no_et_sets=args.throw_no_et_sets)
+    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
+                            shuffle=True, num_workers=args.num_workers)
+    val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=False, augment_data=False)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
 
 
-if args.model == 'MonoUNet':
-    if args.enhance_feat:
-        model = MonoUNet(input_channels=5)
-        loss = losses.AvgDiceEnhanceLoss(device)
-    else:
-        model = MonoUNet()
-        loss = losses.AvgDiceLoss()
-
-if args.model == 'CascadeNet':
-    model = CascadeNet()
-    loss = losses.CascadeAvgDiceLoss()
-if args.model == 'VAEReg':
-    model = VAEReg()
-    loss = losses.VAEDiceLoss()
-
-
-optimizer = \
-    optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-
-model = model.to(device)
-
-start_epoch = 0
-if args.resume:
-    print(f'Resume training from {args.resume}')
-    checkpoint = torch.load(args.resume)
-    start_epoch = checkpoint["epoch"]
-    model.load_state_dict(checkpoint["state_dict"])
-    optimizer.load_state_dict(checkpoint["optimizer"])    
-
-if args.pretrain:
-    print(f'Begin training from pretrained model {args.pretrain}')
-    checkpoint = torch.load(args.pretrain)
-    model.load_state_dict(checkpoint["state_dict"])
 
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = None
 
-swa_start = 1
 opt = None
 if args.swa:
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-    opt = SWA(optimizer, swa_start=swa_start, swa_freq=1, swa_lr=0.05)
+    swa_lr = ((1 - (args.swa / args.epochs)) ** 0.9) * args.lr
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+    opt = SWA(optimizer, swa_start=args.swa, swa_freq=1, swa_lr=swa_lr)
 else:
     # this must occur before giving the optimizer to amp
     lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
@@ -251,6 +294,21 @@ columns = ['set', 'ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
 #lr = args.lr
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
+
+    if args.seedtest:
+        model.eval()
+        eval_val = validate(model, loss, valloader, device, cascade_train=args.cascade_train, debug=args.debug)
+        time_ep = time.time() - time_ep
+        memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
+
+        eval_values = ['eval', epoch + 1, eval_val['loss']] \
+          + eval_val['dice'].tolist()\
+          + [ time_ep, memory_usage] 
+
+        table = tabulate.tabulate([eval_values], 
+                columns, tablefmt="simple", floatfmt="8.4f")
+        print(table)
+
     model.train()
 
     if args.swa:
@@ -259,6 +317,7 @@ for epoch in range(start_epoch, args.epochs):
                 opt, 
                 trainloader, 
                 device, 
+                cascade_train=arg.cascade_train,
                 mixed_precision=args.mixed_precision,
                 debug=args.debug)
     else:
@@ -267,10 +326,11 @@ for epoch in range(start_epoch, args.epochs):
                 optimizer, 
                 trainloader, 
                 device, 
+                cascade_train=args.cascade_train,
                 mixed_precision=args.mixed_precision,
                 debug=args.debug)
        
-    if args.swa and epoch > swa_start:
+    if args.swa and epoch > args.swa:
         opt.swap_swa_sgd()
 
     if (epoch + 1) % args.save_freq == 0:
@@ -288,7 +348,7 @@ for epoch in range(start_epoch, args.epochs):
         if args.swa:
             opt.bn_update(trainloader, model)
         model.eval()
-        eval_val = validate(model, loss, valloader, device, debug=args.debug)
+        eval_val = validate(model, loss, valloader, device, cascade_train=args.cascade_train, debug=args.debug)
 
         writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
@@ -299,7 +359,7 @@ for epoch in range(start_epoch, args.epochs):
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
 
-        eval_values = ['eval', epoch + 1, eval_val['loss'].data] \
+        eval_values = ['eval', epoch + 1, eval_val['loss']] \
           + eval_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
 
@@ -310,4 +370,8 @@ for epoch in range(start_epoch, args.epochs):
     writer.flush()
     if not args.swa:
         scheduler.step()
+    if args.selftrain:
+        trainloader.dataset.annotate()
+
+
 

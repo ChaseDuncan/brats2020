@@ -13,18 +13,13 @@ from torch.utils.tensorboard import SummaryWriter
 import pickle
 import argparse
 import random
-from utils import (
-    save_checkpoint,
-    load_data,
-    train,
-    validate,
-    )
-
 from models.cascade_net import CascadeNet
 from models.vaereg import VAEReg
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
+
+from utils import *
 from models.models import *
 from data_loader import BraTSTrainDataset, BraTSSelfTrainDataset
 
@@ -70,6 +65,15 @@ parser.add_argument('--mixed_precision', action='store_true',
 parser.add_argument('--cascade_train', action='store_true', 
     help='train cascade model, append wt annotation to input (default: off)')
 
+parser.add_argument('--instance_norm', action='store_true', 
+    help='use instance normalization instead of group normalization (default: off)')
+
+parser.add_argument('--clr', action='store_true', 
+    help='use cyclical learning rate(default: off)')
+
+parser.add_argument('--eclr', action='store_true', 
+    help='step clr per epoch(default: off)')
+
 parser.add_argument('--seedtest', action='store_true', 
     help='test for random seeds (default: off)')
 
@@ -78,6 +82,9 @@ parser.add_argument('-b', '--debug', action='store_true',
 
 parser.add_argument('-L', '--large_patch', action='store_true', 
         help='use patch size 160x192x128 (default patch size: 128x128x128)')
+
+parser.add_argument('-F', '--full_patch', action='store_true', 
+        help='use patch size 240x240x144 (default patch size: 128x128x128)')
 
 parser.add_argument('--cross_val', action='store_true', 
     help='use train/val split of full dataset (default: off)')
@@ -134,7 +141,6 @@ parser.add_argument('--lr_add_cnst', type=float, default=1e-6, metavar='LR',
 
 parser.add_argument('-m', '--message', action='store', dest='msg', nargs='*', type=str,
         help='a message to log in command.sh. might need to be last argument to work.')
-
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M', 
     help='SGD momentum (default: 0.9)')
 
@@ -142,6 +148,7 @@ parser.add_argument('--nesterov', action='store_true',
         help='use sgd with nesterov instead of adam. (default: adam)')
 
 args = parser.parse_args()
+
 if args.device >= 0:
     device = torch.device(f'cuda:{args.device}')
 else:
@@ -166,15 +173,18 @@ dims=[128, 128, 128]
 if args.large_patch:
     dims=[160, 192, 128]
 
+if args.full_patch:
+    dims=[240, 240, 144]
+
 if args.model == 'MonoUNet':
     if args.enhance_feat:
-        model = MonoUNet(input_channels=5, upsampling=args.upsampling)
+        model = MonoUNet(input_channels=5, upsampling=args.upsampling, instance_norm=args.instance_norm)
         loss = losses.AvgDiceEnhanceLoss(device)
     else:
         if args.cascade_train:
-            model = MonoUNet(input_channels=5, upsampling=args.upsampling)
+            model = MonoUNet(input_channels=5, upsampling=args.upsampling, instance_norm=args.instance_norm)
         else:
-            model = MonoUNet(upsampling=args.upsampling)
+            model = MonoUNet(upsampling=args.upsampling, instance_norm=args.instance_norm)
         loss = losses.AvgDiceLoss()
     if args.bce:
         #loss = losses.DiceBCELoss()
@@ -182,6 +192,10 @@ if args.model == 'MonoUNet':
 
 if args.model == 'CascadeNet':
     model = CascadeNet()
+    loss = losses.CascadeAvgDiceLoss(coarse_wt_only=args.coarse_wt_only)
+
+if args.model == 'CascadeNetLite':
+    model = CascadeNet(lite=True)
     loss = losses.CascadeAvgDiceLoss(coarse_wt_only=args.coarse_wt_only)
 
 if args.model == 'VAEReg':
@@ -197,6 +211,7 @@ else:
 
 model = model.to(device)
 start_epoch = 0
+
 if args.resume:
     print(f'Resume training from {args.resume}')
     checkpoint = torch.load(args.resume)
@@ -237,10 +252,9 @@ if args.cross_val:
             modes[3].append(flair)
             segs.append(seg)
         return modes, segs
-
     train_modes, train_segs = proc_split(train_split)
     train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=args.augment_data,
-            modes=train_modes, segs=train_segs)
+            enhance_feat=args.enhance_feat, modes=train_modes, segs=train_segs, )
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
 
@@ -252,7 +266,7 @@ if args.cross_val:
 elif args.selftrain:
     train_data = BraTSSelfTrainDataset(args.data_dir, model, device, n=args.selftrain_n, dims=dims,   
             augment_data=args.augment_data)
-    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
+    trainloader = DataLoader(train_data, batch_size=args.batch_size,
                             shuffle=True, num_workers=args.num_workers)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=False, augment_data=False)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
@@ -263,20 +277,24 @@ else:
             augment_data=args.augment_data, enhance_feat=args.enhance_feat, throw_no_et_sets=args.throw_no_et_sets)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
-    val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=False, augment_data=False)
+    val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=args.enhance_feat, augment_data=False)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
-
-
 
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')
 scheduler = None
 
 opt = None
-if args.swa:
+if args.swa and args.clr:
+    scheduler = optim.lr_scheduler.CyclicLR(optimizer, 2e-3, 2e-8, cycle_momentum=False)
+    opt = SWA(scheduler)
+elif args.swa:
     swa_lr = ((1 - (args.swa / args.epochs)) ** 0.9) * args.lr
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
     opt = SWA(optimizer, swa_start=args.swa, swa_freq=1, swa_lr=swa_lr)
+elif args.clr or args.eclr:
+    scheduler = optim.lr_scheduler.CyclicLR(optimizer, 2e-4, 2e-7, cycle_momentum=False)
+    #scheduler = optim.lr_scheduler.CyclicLR(optimizer, 2e-3, 2e-8, cycle_momentum=False)
 else:
     # this must occur before giving the optimizer to amp
     lmbda = lambda epoch : (1 - (epoch / args.epochs)) ** 0.9
@@ -287,11 +305,9 @@ if args.mixed_precision:
     # Allow Amp to perform casts as required by the opt_level
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
-# TODO: optimizer factory, allow for SGD with momentum etx.
-columns = ['set', 'ep', 'loss', 'dice_et', 'dice_wt','dice_tc', \
+columns = ['set', 'ep', 'lr', 'loss', 'dice_et', 'dice_wt','dice_tc', \
    'time', 'mem_usage']
 
-#lr = args.lr
 for epoch in range(start_epoch, args.epochs):
     time_ep = time.time()
 
@@ -328,7 +344,9 @@ for epoch in range(start_epoch, args.epochs):
                 device, 
                 cascade_train=args.cascade_train,
                 mixed_precision=args.mixed_precision,
-                debug=args.debug)
+                debug=args.debug,
+                clr=args.clr,
+                scheduler=scheduler)
        
     if args.swa and epoch > args.swa:
         opt.swap_swa_sgd()
@@ -348,7 +366,28 @@ for epoch in range(start_epoch, args.epochs):
         if args.swa:
             opt.bn_update(trainloader, model)
         model.eval()
-        eval_val = validate(model, loss, valloader, device, cascade_train=args.cascade_train, debug=args.debug)
+        if args.cross_val:
+            train_val = validate(model, loss, trainloader, 
+                    device, cascade_train=args.cascade_train, debug=args.debug)
+
+            writer.add_scalar(f'{args.dir}/logs/loss/train', train_val['loss'], epoch)
+            et, wt, tc = train_val['dice']
+            writer.add_scalar(f'{args.dir}/logs/dice/train/et', et, epoch)
+            writer.add_scalar(f'{args.dir}/logs/dice/train/wt', wt, epoch)
+            writer.add_scalar(f'{args.dir}/logs/dice/train/tc', tc, epoch)
+
+            time_ep = time.time() - time_ep
+            memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
+
+            train_values = ['train', epoch + 1, scheduler.get_last_lr(), train_val['loss']] \
+              + train_val['dice'].tolist()\
+              + [ time_ep, memory_usage] 
+
+            table_train = tabulate.tabulate([train_values], 
+                    columns, tablefmt="simple", floatfmt="8.4f")
+
+        eval_val = validate(model, loss, valloader, 
+                device, cascade_train=args.cascade_train, debug=args.debug)
 
         writer.add_scalar(f'{args.dir}/logs/loss/eval', eval_val['loss'], epoch)
         et, wt, tc = eval_val['dice']
@@ -359,19 +398,19 @@ for epoch in range(start_epoch, args.epochs):
         time_ep = time.time() - time_ep
         memory_usage = torch.cuda.memory_allocated() / (1024.0 ** 3)
 
-        eval_values = ['eval', epoch + 1, eval_val['loss']] \
+        eval_values = ['eval', epoch + 1, scheduler.get_last_lr(), eval_val['loss']] \
           + eval_val['dice'].tolist()\
           + [ time_ep, memory_usage] 
 
         table = tabulate.tabulate([eval_values], 
                 columns, tablefmt="simple", floatfmt="8.4f")
+        if args.cross_val: 
+            print(table_train)
         print(table)
    
     writer.flush()
-    if not args.swa:
+    if not args.swa or not args.clr:
         scheduler.step()
     if args.selftrain:
         trainloader.dataset.annotate()
-
-
 

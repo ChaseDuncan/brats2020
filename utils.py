@@ -182,9 +182,15 @@ def process_segs(seg):
 
 # all the training and validation functions need to get out of here
 def train(model, loss, optimizer, train_dataloader, device, cascade_train=False, mixed_precision=False, 
-        debug=False):
+        debug=False, clr=False, scheduler=None):
     total_loss = 0
     model.train()
+    if clr:
+        try:
+            scheduler.last_epoch = -1
+        except:
+            print(f'clr is {clr} but scheduler is {scheduler}. please pass valid arguments.')
+
     for src, target in tqdm(train_dataloader):
         optimizer.zero_grad()
         src, target = src.to(device, dtype=torch.float),\
@@ -201,6 +207,11 @@ def train(model, loss, optimizer, train_dataloader, device, cascade_train=False,
         #print(f'total_loss {total_loss}')
         cur_loss.backward()
         optimizer.step()
+        if clr:
+            try:
+                scheduler.step()
+            except:
+                print(f'clr is {clr} but scheduler is {scheduler}. please pass valid arguments.')
         if debug:
           break
         #if mixed_precision:
@@ -210,6 +221,9 @@ def train(model, loss, optimizer, train_dataloader, device, cascade_train=False,
         #    cur_loss.backward()
         #    optimizer.step()
  
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
 
 def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
     loss_total = 0
@@ -240,8 +254,13 @@ def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
             ####### 
             # CascadeNet
             if isinstance(model, cascade_net.CascadeNet):
-                average_seg = 0.5*(preds['deconv'] + preds['biline'])
+
+                #average_seg = 0.5*(preds['deconv'] + preds['biline'])
+                #dice_total += dice_score(average_seg, target)
+                # for lite
+                average_seg = preds['biline']
                 dice_total += dice_score(average_seg, target)
+
             if debug:
               break
         avg_dice = dice_total / examples_total

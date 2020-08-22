@@ -98,10 +98,16 @@ class BraTSDataset(Dataset):
         npad = ((0, add_x),
                 (0, add_y),
                 (0, add_z))
+
         img = np.pad(img, 
                 pad_width=npad, 
                 mode='constant', 
                 constant_values=0)
+
+        #img = np.zeros(img.shape)
+        #img[120, 120, 50] = 1
+        #print(np.where(img > 0))
+
         self.x_off = (img.shape[0] - self.dims[0]) // 2
         self.y_off = (img.shape[1] - self.dims[1]) // 2
         self.z_off = (img.shape[2] - self.dims[2]) // 2
@@ -109,6 +115,18 @@ class BraTSDataset(Dataset):
         img = img[self.x_off:img.shape[0]-self.x_off,
               self.y_off:img.shape[1]-self.y_off,
               self.z_off:img.shape[2]-self.z_off]
+        #dims = self.dims
+
+        #x_off = int((240 - dims[0]) / 2)
+        #y_off = int((240 - dims[1]) / 2)
+        #z_off = int((155 - dims[2]) / 2)
+        #m = nn.ConstantPad3d((z_off+1, z_off, y_off, y_off, x_off, x_off), 0)
+        #img = m(img)
+        #print(np.where(img > 0))
+        #import sys; sys.exit()
+        #et = m(output[0, 0, :, :, :])
+        #wt = m(output[0, 1, :, :, :])
+        #tc = m(output[0, 2, :, :, :])
 
         # don't standardized the segmentations
         if seg_mat:
@@ -116,7 +134,6 @@ class BraTSDataset(Dataset):
 
         #img_trans = self.min_max_normalize(img)
         return self.standardize(img, shift_and_scale=shift_and_scale)
-
 
     def min_max_normalize(self, d):
         d = (d - np.min(d)) / (np.max(d) - np.min(d))
@@ -151,7 +168,7 @@ class BraTSTrainDataset(BraTSDataset):
     def __init__(self, data_dir, 
         dims=[240, 240, 155], 
         augment_data = True, throw_no_et_sets=False,
-        clinical_segs=True, enhance_feat=True, 
+        clinical_segs=True, enhance_feat=False, 
         modes=None, segs=None):
         BraTSDataset.__init__(self, data_dir, dims, modes=modes, segs=segs)
         self.clinical_segs = clinical_segs
@@ -186,29 +203,6 @@ class BraTSTrainDataset(BraTSDataset):
             self.segs = segs_temp
             self.modes = mode_temp
 
-    def data_aug(self, brain):
-        aug_brain = None
-        if np.random.uniform() > 0.5:
-            aug_brain = brain.copy()
-            aug_brain = aug_brain + np.random.uniform(-0.1, 0.1, brain.shape)
-
-        if np.random.uniform() > 0.5:
-            if aug_brain is None:
-                aug_brain = brain.copy()
-            aug_brain = aug_brain*np.random.uniform(0.9, 1.1, brain.shape)
-
-        if aug_brain is None:
-            return brain
-
-        nonzero_masks = [i != 0 for i in aug_brain]
-        brain_mask = np.zeros(aug_brain.shape, dtype=bool)
-
-        for i in range(len(nonzero_masks)):
-            brain_mask[i, :, :] = brain_mask[i, :, :] | nonzero_masks[i]
-        aug_brain[brain_mask == False] = 0
-
-        return aug_brain
-
     def _load_images(self, idx):
         images = []
         for m in self.modes:
@@ -241,17 +235,12 @@ class BraTSTrainDataset(BraTSDataset):
         # header data should be handled in preprocessing, not here
         images, header = self._load_images(idx) 
         images = [self._transform_data(image, shift_and_scale=shift_and_scale) for image in images]  
-        images = np.stack(images)
-
+        images = torch.from_numpy(np.stack(images))
         
-        # This is broken right now
         if self.enhance_feat:
             # t1 idx: 0 t1ce idx: 1
-            e = data[1] / (data[0] + 1e-32)
-            e[e<0] = 0 
-            e[e>0] = 1
-            data.append(e) 
-
+            e = images[1] / (images[0] + 1e-8)
+            images = torch.cat([images, e.unsqueeze(0)])
 
         target = []
         # get this out of here
@@ -294,7 +283,7 @@ class BraTSTrainDataset(BraTSDataset):
                 segs.append(seg_et)
                 target = torch.from_numpy(np.stack(segs))
 
-        return torch.from_numpy(images), target
+        return images, target
 
 
 class BraTSSelfTrainDataset(BraTSTrainDataset):

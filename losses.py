@@ -73,6 +73,9 @@ class AvgDiceLoss(nn.Module):
         super(AvgDiceLoss, self).__init__()
     
     def forward(self, preds, targets):
+        # this conditional is used for CascadeNet when only using bilinear upsampling
+        if preds == None:
+            return 0
         target = targets['target']
         proportions = dice_score(preds, target)
         avg_dice = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
@@ -125,17 +128,18 @@ class AvgDiceEnhanceLoss(nn.Module):
         # is this a reference? does it change the original tensor?
         # turns out it did and it was a problem
         ce_ratio_ones = torch.zeros(ce_ratio.size()).to(self.device)
-        ce_ratio_ones[ce_ratio<0] = 0 
-        ce_ratio_ones[ce_ratio>0] = 1
-
-        et_pred = torch.zeros(et_prob.size()).to(self.device)
-        et_pred[et_prob>0] = 1
-        fp = torch.einsum('bijk, bijk->b', [et_pred, et_pred])\
-               - torch.einsum('bijk, bijk->b', [et_pred, ce_ratio])
-
+        ce_ratio_ones[ce_ratio<=0] = 0 
+        #et_pred = torch.zeros(et_prob.size()).to(self.device)
+        #et_pred[et_prob>0] = 1
+        #fp = torch.einsum('bijk, bijk->b', [et_pred, et_pred])\
+        #       - torch.einsum('bijk, bijk->b', [et_pred, ce_ratio])
+        fp = torch.einsum('bijk, bijk->b', [et_prob, et_prob])\
+               - torch.einsum('bijk, bijk->b', [et_prob, ce_ratio_ones])
         # (this is probably a convoluted way to) compute the number of true negatives
-        tn_mat = torch.ones(et_pred.size()).to(self.device) 
-        tn_mat[et_pred == 0] = 0
+        #tn_mat = torch.ones(et_pred.size()).to(self.device) 
+        #tn_mat[et_pred == 0] = 0
+        tn_mat = torch.ones(et_prob.size()).to(self.device) 
+        tn_mat[et_prob == 0] = 0
         tn_mat[ce_ratio == 0] = 0
         tn_num = torch.einsum('bijk, bijk->b', [tn_mat, tn_mat])
 

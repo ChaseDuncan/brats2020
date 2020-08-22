@@ -170,12 +170,14 @@ class DeconvDecoder(nn.Module):
 
 
 class CascadeNet(nn.Module):
-    def __init__(self):
+    def __init__(self, lite=False):
         super(CascadeNet, self).__init__()
+        self.lite = lite
         self.coarse_encoder = CoarseEncoder()
         self.coarse_decoder = CoarseDecoder()
         self.encoder = Encoder(input_channels=7)
-        self.deconv_decoder = DeconvDecoder()
+        if not self.lite:
+            self.deconv_decoder = DeconvDecoder()
         self.biline_decoder = BilineDecoder()
 
     def forward(self, x):
@@ -185,7 +187,9 @@ class CascadeNet(nn.Module):
 
         x = torch.cat((coarse, x), 1) 
         x = self.encoder(x)
-        deconv, deconv_logits = self.deconv_decoder(x)
+        deconv = None
+        if not self.lite:
+            deconv, deconv_logits = self.deconv_decoder(x)
         biline = self.biline_decoder(x)
 
         # Uncomment these lines for model that doesn't use

@@ -56,6 +56,7 @@ class DiceBCELoss(nn.Module):
                 + self.bce(logits[:, 1, :, :, :].squeeze(), target[:, 1, :, :, :].squeeze())\
                 + self.bce(logits[:, 2, :, :, :].squeeze(), target[:, 2, :, :, :].squeeze())
 
+
 class BCELoss(nn.Module):
     def __init__(self):
         super(BCELoss, self).__init__()
@@ -66,8 +67,8 @@ class BCELoss(nn.Module):
         return self.bce(logits[:, 0, :, :, :].squeeze(), target[:, 0, :, :, :].squeeze())\
                 + self.bce(logits[:, 1, :, :, :].squeeze(), target[:, 1, :, :, :].squeeze())\
                 + self.bce(logits[:, 2, :, :, :].squeeze(), target[:, 2, :, :, :].squeeze())
-
         
+
 class AvgDiceLoss(nn.Module):
     def __init__(self):
         super(AvgDiceLoss, self).__init__()

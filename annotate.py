@@ -106,7 +106,6 @@ if args.hier:
     model = HierarchicalNet(checkpoint_file, args.hier, device)
     model.to(device)
 
-
 #print('don\'t forget to change the thresholds back.')
 with torch.no_grad():
     model.eval()

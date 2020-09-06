@@ -38,6 +38,7 @@ parser.add_argument('--data_dir', type=str, default='/dev/shm/MICCAI_BraTS2020_T
 
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
                         help='model class (default: None)')
+
 parser.add_argument('--coarse_wt_only', action='store_true', 
     help='only use whole tumor for loss function for coarse layer of CascadeNet.\
             only meaningful if args.model is CascadeNet (default: off)')
@@ -50,7 +51,7 @@ parser.add_argument('--upsampling', type=str, default='bilinear',
     help='upsampling algorithm to use in decoder (default: bilinear)')
 
 parser.add_argument('--loss', type=str, default='avgdice', 
-    choices=['dice', 'recon', 'avgdice', 'vae'], 
+    choices=['avgdice', 'vae', 'bce', 'dicebce'], 
     help='which loss to use during training (default: avgdice)')
 
 parser.add_argument('-a', '--augment_data', action='store_true', 
@@ -88,9 +89,6 @@ parser.add_argument('-F', '--full_patch', action='store_true',
 
 parser.add_argument('--cross_val', action='store_true', 
     help='use train/val split of full dataset (default: off)')
-
-parser.add_argument('--bce', action='store_true', 
-    help='use bce term in loss (default: off)')
 
 parser.add_argument('--swa', type=int, default=0, metavar='n', 
     help='use stochastic weight averaging during training.\
@@ -186,9 +184,10 @@ if args.model == 'MonoUNet':
         else:
             model = MonoUNet(upsampling=args.upsampling, instance_norm=args.instance_norm)
         loss = losses.AvgDiceLoss()
-    if args.bce:
-        #loss = losses.DiceBCELoss()
+    if args.loss == 'bce':
         loss = losses.BCELoss()
+    if args.loss == 'dicebce':
+        loss = losses.DiceBCELoss()
 
 if args.model == 'CascadeNet':
     model = CascadeNet()
@@ -286,7 +285,7 @@ scheduler = None
 
 opt = None
 if args.swa and args.clr:
-    scheduler = optim.lr_scheduler.CyclicLR(optimizer, 2e-3, 2e-8, cycle_momentum=False)
+    scheduler = optim.lr_scheduler.CyclicLR(optimizer, 2e-4, 2e-8, cycle_momentum=False)
     opt = SWA(scheduler)
 elif args.swa:
     swa_lr = ((1 - (args.swa / args.epochs)) ** 0.9) * args.lr

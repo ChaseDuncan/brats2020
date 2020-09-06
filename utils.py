@@ -27,6 +27,50 @@ from apex_dummy import amp
 debug=False
 # Uncomment next line to have training and evaluating only do one iteration
 #debug=True
+
+# currently unused. see note on validate_bg
+def train_epoch(model, loss, optimizer, tr_gen, batches_per_epoch, device):
+    model.train()
+     
+    for i, batch in enumerate(tr_gen):
+        if i > batches_per_epoch:
+            break
+        optimizer.zero_grad()
+        src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
+            process_segs(batch['seg']).to(device, dtype=torch.float)
+        output, _ = model(src)
+
+        cur_loss = loss(output, {'target':target, 'src':src})
+
+        cur_loss.backward()
+        optimizer.step()
+
+
+# currently unused. for validation when using batchgenerator.
+# batchgenerator produces examples forever so the loop has
+# and additional variable for tracking how much of the set
+# has been annotated. 
+def validate_bg(model, loss, val_gen, batches_per_epoch, device):
+    total_loss = 0
+    total_dice = 0
+    total_dice_agg = 0
+    total_examples = 0
+    with torch.no_grad():
+        model.eval()
+        for i, batch in enumerate(val_gen):
+            if i > batches_per_epoch:
+                break
+            src, target = torch.tensor(batch['data']).to(device, dtype=torch.float),\
+                process_segs(batch['seg']).to(device, dtype=torch.float)
+            total_examples += src.size()[0]
+            output, _ = model(src)
+            total_loss += loss(output, {'target':target, 'src':src}) 
+            total_dice += dice_score(output, target)
+    avg_dice = total_dice / total_examples
+    avg_loss = total_loss / total_examples 
+    return {'train_dice':avg_dice, 'train_loss':avg_loss}
+
+
 def get_free_gpu():
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free > .tmp')
     memory_available = [int(x.split()[2]) for x in open('.tmp', 'r').readlines()]

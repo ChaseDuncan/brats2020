@@ -80,7 +80,6 @@ class Decoder(nn.Module):
         self.block13 = ResNetBlock(32, instance_norm=instance_norm)
         self.block14 = ResNetBlock(32, instance_norm=instance_norm)
         self.cf_final = CompressFeatures(32, output_channels)
-        # don't forget about this
         self.up = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
         #self.up = nn.Upsample(scale_factor=2, mode='nearest')
         self.sig = nn.Sigmoid()
@@ -98,6 +97,7 @@ class Decoder(nn.Module):
         logits = self.cf_final(sp1)
         return self.sig(logits), logits
      
+
 class MonoUNet(nn.Module):
     def __init__(self, input_channels=4, upsampling='bilinear', instance_norm=False):
         super(MonoUNet, self).__init__()
@@ -110,6 +110,7 @@ class MonoUNet(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         return self.decoder(x)
+
 
 class HierarchicalNet(nn.Module):
     def __init__(self, cp1, cp2, device):

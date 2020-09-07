@@ -2,19 +2,22 @@ import os
 import torch
 import torch.nn as nn
 from models.models import *
+from models.cascade_net import CascadeNet
 from tqdm import tqdm
 import numpy as np
 
 import argparse
 from torch.utils.data import DataLoader
-from data_loader import BraTSAnnotationDataset
+from data_loader import BraTSAnnotationDataset, BraTSTrainDataset
 import os
 import nibabel as nib
 
 
 parser = argparse.ArgumentParser(description='Annotate BraTS data.')
-parser.add_argument('--model_dir', type=str, required=True,
+parser.add_argument('--dir', type=str, required=True,
         help='Data directory for model.')
+parser.add_argument('--hier', type=str, default=None,
+        help='Path to second model in hierarchy(default: None')
 parser.add_argument('--output_dir', type=str, default=None,
         help='Path to save annotations to (default: args.model/annotations/')
 parser.add_argument('--data_dir', type=str,
@@ -25,8 +28,15 @@ parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
                 checkpoint with the largest epoch in its name.')
 parser.add_argument('-g', '--device', type=int, default=-1, metavar='N',
         help='Which device to use for annotation. (default: cpu)')
-parser.add_argument('-t', '--thresh', type=float, default=0.5, metavar='p',
+parser.add_argument('-g2', '--device2', type=int, default=-1, metavar='N',
+        help='Which device to use for second model in hierarchy. (default: cpu)')
+parser.add_argument('--wt', type=float, default=0.5, metavar='p',
         help='threhold on probability for predicting true (default: 0.5)')
+parser.add_argument('--et', type=float, default=0.5, metavar='p',
+        help='threhold on probability for predicting true (default: 0.5)')
+parser.add_argument('--tc', type=float, default=0.5, metavar='p',
+        help='threhold on probability for predicting true (default: 0.5)')
+
 parser.add_argument('-e', '--enhance_feat', action='store_true', 
     help='include t1ce/t1 in input and loss.')
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
@@ -35,14 +45,21 @@ parser.add_argument('--model', type=str, default=None, required=True, metavar='M
 # finish this
 #parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
 #        help='Which checkpoint to use if not most recent (default: most recent checkpoint in args.model/checkpoints/)')
+#dims=[240, 240, 144]
+dims=[128, 128, 128]
 
 args = parser.parse_args()
+
 if args.device >= 0:
     device = torch.device(f'cuda:{args.device}')
 else:
     device = torch.device('cpu')
 
-for p, _, files in os.walk(f'{args.model_dir}/checkpoints/'):
+brats_data = BraTSAnnotationDataset(args.data_dir, 
+        dims=dims, enhance_feat=args.enhance_feat)
+dataloader = DataLoader(brats_data)
+
+for p, _, files in os.walk(f'{args.dir}/checkpoints/'):
     checkpoint_file = os.path.join(p, files[-1])
     if args.checkpoint is not None:
         for f in files:
@@ -53,48 +70,98 @@ for p, _, files in os.walk(f'{args.model_dir}/checkpoints/'):
 
 ep = ''.join([s for s in checkpoint_file if s.isdigit()])
 if args.output_dir == None:
-    annotations_dir = f'{args.model_dir}/annotations/{ep}/'
+    annotations_dir = f'{args.dir}/annotations/{ep}/'
 else:
     annotations_dir = f'{args.output_dir}'
+seg_dir = f'{annotations_dir}/seg/'
+unc_dir = f'{annotations_dir}/unc/'
 
-os.makedirs(annotations_dir, exist_ok=True)
+os.makedirs(seg_dir, exist_ok=True)
+os.makedirs(unc_dir, exist_ok=True)
+
 if args.model == 'MonoUNet':
     if args.enhance_feat:
         model = MonoUNet(input_channels=5)
     else:
         model = MonoUNet()
 
-checkpoint = torch.load(checkpoint_file, map_location=device)
-model.load_state_dict(checkpoint['state_dict'], strict=False)
-model = model.to(device)
+    checkpoint = torch.load(checkpoint_file, map_location=device)
+    model.load_state_dict(checkpoint['state_dict'], strict=False)
+    model = model.to(device)
 
-brats_data = BraTSAnnotationDataset(args.data_dir, 
-        dims=[160, 192, 128], enhance_feat=args.enhance_feat)
-dataloader = DataLoader(brats_data)
+if args.model.lower() == 'average':
+    model = MonoUNet()
+    model = model_average(args.dir, model, device, sample_proportion=0.50, sample_rate=0.5)
+    model = model.to(device)
+    #brats_train_data = BraTSTrainDataset('/dev/shm/MICCAI_BraTS2020_TrainingData/', 
+    #        dims=dims, enhance_feat=args.enhance_feat)
+    #train_dataloader = DataLoader(brats_train_data)
+    #model = gn_update(train_dataloader, model, device)
+
+if args.model == 'CascadeNetLite':
+    model = CascadeNet(lite=True)
+    model.to(device)
+
+if args.hier:
+    model = HierarchicalNet(checkpoint_file, args.hier, device)
+    model.to(device)
+
+#print('don\'t forget to change the thresholds back.')
 with torch.no_grad():
     model.eval()
-    dims=[160, 192, 128]
     for d in tqdm(dataloader):
         src = d['data'].to(device, dtype=torch.float)
-        output = model(src)
-
+        output, _ = model(src)
+        if args.model == 'CascadeNetLite':
+            output = output['biline']
         x_off = int((240 - dims[0]) / 2)
         y_off = int((240 - dims[1]) / 2)
         z_off = int((155 - dims[2]) / 2)
-
-        m = nn.ConstantPad3d((z_off, z_off, y_off, y_off, x_off, x_off), 0)
+        m = nn.ConstantPad3d((z_off+1, z_off, y_off, y_off, x_off, x_off), 0)
 
         et = m(output[0, 0, :, :, :])
         wt = m(output[0, 1, :, :, :])
         tc = m(output[0, 2, :, :, :])
-        
-        label = torch.zeros((240, 240, 155))
-        label[torch.where(wt > args.thresh)] = 2
-        label[torch.where(tc > args.thresh)] = 1
-        label[torch.where(et > args.thresh)] = 4
-        
+
+        label = torch.zeros((240, 240, 155), dtype=torch.short)
+        label[torch.where(wt > args.wt)] = 2
+        label[torch.where(tc > args.tc)] = 1
+        label[torch.where(et > args.et)] = 4
+         
+        unc_enhance = (100*(torch.ones(et.size()).to(device) - et)).type(torch.CharTensor)
+        unc_whole = (100*(torch.ones(wt.size()).to(device) - wt)).type(torch.CharTensor)
+        unc_core = (100*(torch.ones(tc.size()).to(device) - tc)).type(torch.CharTensor)
+        '''
+        The participants are called to upload 4 nifti (.nii.gz) volumes (3 
+        uncertainty maps and 1 multi-class segmentation volume from Task 1) 
+        onto CBICA's Image Processing Portal format. For example, for each ID in the 
+        dataset, participants are expected to upload following 4 volumes:
+
+        1. {ID}.nii.gz (multi-class label map)
+        2. {ID}_unc_whole.nii.gz (Uncertainty map associated with whole tumor)
+        3. {ID}_unc_core.nii.gz (Uncertainty map associated with tumor core)
+        4. {ID}_unc_enhance.nii.gz (Uncertainty map associated with enhancing tumor)
+        '''
+        #label[torch.where(wt > 0.25)] = 2
+        #label[torch.where(tc > 0.25)] = 1
+        #label[torch.where(et > 0.25)] = 4
+
         orig_header = nib.load(d['file'][0][0]).header
         aff = orig_header.get_qform()
-        img = nib.Nifti1Image(label.numpy(), aff, header=orig_header)
-        img.to_filename(os.path.join(annotations_dir, f'{d["patient"][0]}.nii.gz'))
+        patient = d["patient"][0]
+
+        label_map = nib.Nifti1Image(label.numpy(), aff, header=orig_header)
+        label_map.to_filename(os.path.join(seg_dir, f'{patient}.nii.gz'))
+        
+        # not sure about affine transform and header for this file
+        unc_enhance = nib.Nifti1Image(unc_enhance.numpy(), aff, header=orig_header)
+        unc_enhance.to_filename(os.path.join(unc_dir, f'{patient}_unc_enhance.nii.gz'))
+          
+        # not sure about affine transform and header for this file
+        unc_whole = nib.Nifti1Image(unc_whole.numpy(), aff, header=orig_header)
+        unc_whole.to_filename(os.path.join(unc_dir, f'{patient}_unc_whole.nii.gz'))
+
+        # not sure about affine transform and header for this file
+        unc_core = nib.Nifti1Image(unc_core.numpy(), aff, header=orig_header)
+        unc_core.to_filename(os.path.join(unc_dir, f'{patient}_unc_core.nii.gz'))
 

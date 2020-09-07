@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
 from models.models import *
-from data_loader import BraTSTrainDataset
+from data_loader import BraTSTrainDataset, shuffle_split_dataset
 
 #from apex import amp
 from apex_dummy import amp
@@ -119,48 +119,18 @@ with open(os.path.join(f'{args.dir}', 'command.sh'), 'w') as f:
 #dims=[128, 128, 128]
 dims=[160, 192, 128]
 if args.cross_val:
-    filenames=[]
-    for (dirpath, dirnames, files) in os.walk(args.data_dir):
-        filenames += [os.path.join(dirpath, file) for file in files if '.nii.gz' in file ]
-
-        modes = [sorted([ f for f in filenames if "t1.nii.gz" in f ]),
-                      sorted([ f for f in filenames if "t1ce.nii.gz" in f ]),
-                      sorted([ f for f in filenames if "t2.nii.gz" in f ]),
-                      sorted([ f for f in filenames if "flair.nii.gz" in f ]),
-                        sorted([ f for f in filenames if "seg.nii.gz" in f ])
-
-            ]
-    joined_files = list(zip(*modes))
-
-    random.shuffle(joined_files)
     split_idx = int(0.8*len(joined_files))
-    train_split, val_split = joined_files[:split_idx], joined_files[split_idx:]
-    def proc_split(split):
-        modes = [[], [], [], []]
-        segs = []
+    train_modes, train_segs, val_modes,  val_segs = shuffle_split_dataset(args.data_dir)
 
-        for t1, t1ce, t2, flair, seg in split:
-            modes[0].append(t1)
-            modes[1].append(t1ce)
-            modes[2].append(t2)
-            modes[3].append(flair)
-            segs.append(seg)
-        return modes, segs
-
-    train_modes, train_segs = proc_split(train_split)
     train_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=True,
             modes=train_modes, segs=train_segs)
     trainloader = DataLoader(train_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
 
-    val_modes, val_segs = proc_split(val_split)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, augment_data=False,
             modes=val_modes, segs=val_segs)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
                             shuffle=True, num_workers=args.num_workers)
-else:
-    # train without cross_val
-    pass
      
 if args.model == 'MonoUNet':
     model = MonoUNet()

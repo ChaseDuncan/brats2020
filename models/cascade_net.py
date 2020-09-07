@@ -163,26 +163,33 @@ class DeconvDecoder(nn.Module):
         sp2 = self.block11(sp2)
         sp1 = x['spatial_level_1'] + self.up21(sp2)
         sp1 = self.block13(sp1)
-        output = self.sig(self.cf_final(sp1))
+        logits = self.cf_final(sp1)
+        output = self.sig(logits)
 
-        return output
+        return output, logits
 
 
 class CascadeNet(nn.Module):
-    def __init__(self):
+    def __init__(self, lite=False):
         super(CascadeNet, self).__init__()
+        self.lite = lite
         self.coarse_encoder = CoarseEncoder()
         self.coarse_decoder = CoarseDecoder()
-        self.encoder = Encoder(input_channels=3)
-        self.deconv_decoder = DeconvDecoder()
+        self.encoder = Encoder(input_channels=7)
+        if not self.lite:
+            self.deconv_decoder = DeconvDecoder()
         self.biline_decoder = BilineDecoder()
 
     def forward(self, x):
         # Uncomment these lines to use deconvolution
-        x = self.coarse_encoder(x)
-        coarse = self.coarse_decoder(x)
-        x = self.encoder(coarse)
-        deconv = self.deconv_decoder(x)
+        coarse = self.coarse_encoder(x)
+        coarse = self.coarse_decoder(coarse)
+
+        x = torch.cat((coarse, x), 1) 
+        x = self.encoder(x)
+        deconv = None
+        if not self.lite:
+            deconv, deconv_logits = self.deconv_decoder(x)
         biline = self.biline_decoder(x)
 
         # Uncomment these lines for model that doesn't use
@@ -193,4 +200,4 @@ class CascadeNet(nn.Module):
             'coarse': coarse,
             'biline': biline,
             'deconv': deconv
-        }
+        }, None 

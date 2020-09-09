@@ -290,15 +290,14 @@ def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
                 cur_loss = loss(preds, {'target':target, 'src':src})
             if isinstance(model, models.MonoUNet): 
                 dice_total += dice_score(preds, target)
+
             loss_total+=cur_loss
-            #if isinstance(model, vaereg.VAEReg):
-            #    #print(f'dice_total: {dice_total}')
-            #    dice_total += dice_score(output['seg_map'], target)
+            if isinstance(model, vaereg.VAEReg):
+                dice_total += dice_score(preds['seg_map'], target)
 
             ####### 
             # CascadeNet
             if isinstance(model, cascade_net.CascadeNet):
-
                 #average_seg = 0.5*(preds['deconv'] + preds['biline'])
                 #dice_total += dice_score(average_seg, target)
                 # for lite
@@ -307,9 +306,10 @@ def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
 
             if debug:
               break
+
         avg_dice = dice_total / examples_total
         avg_loss = loss_total / len(dataloader)
-    
+        print(f'avg_dice: {avg_dice}') 
     return {'dice':avg_dice, 
             'loss':avg_loss
             }

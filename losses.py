@@ -18,13 +18,15 @@ def dice_score(preds, targets):
 class KLLoss(nn.Module):
     def __init__(self):
         super(KLLoss, self).__init__()
-
-    def forward(self, mu, logvar, N):
-        sum_square_mean = torch.einsum('i,i->', mu, mu)
-        sum_log_var = torch.einsum('i->', logvar)
-        sum_var = torch.einsum('i->', torch.exp(logvar))
-        print(f'ssm: {sum_square_mean}\tslv: {sum_log_var}\t svr: {sum_var}\t') 
-        return float(1/N)*(sum_square_mean+sum_var-sum_log_var-N)
+    
+    def forward(self, mu, logvar):
+        return -0.5*torch.mean(torch.ones(mu.size()).cuda()+logvar-torch.exp(logvar)-torch.square(mu))
+    #def forward(self, mu, logvar, N):
+    #    sum_square_mean = torch.einsum('i,i->', mu, mu)
+    #    sum_log_var = torch.einsum('i->', logvar)
+    #    sum_var = torch.einsum('i->', torch.exp(logvar))
+    #    #print(f'ssm: {sum_square_mean}\tslv: {sum_log_var}\t svr: {sum_var}\t') 
+    #    return float(1/N)*(sum_square_mean+sum_var-sum_log_var-N)
 
 
 class VAEDiceLoss(nn.Module):
@@ -34,12 +36,14 @@ class VAEDiceLoss(nn.Module):
         self.kl = KLLoss()
 
     def forward(self, output, targets):
-        ad = self.avgdice(output['seg_map'], targets)
+        #ad = 0.8*self.avgdice(output['seg_map'], targets)
+        target = targets['target']
+        d = -torch.einsum('c->', dice_score(output['seg_map'], target))
         ms = 0.1*F.mse_loss(output['recon'], targets['src'])
-        kl = 0.1*self.kl(output['mu'], output['logvar'], 256)
+        kl = 0.1*self.kl(output['mu'], output['logvar'])
 
-        print(f'ad: {ad}\tms: {ms}\tkl: {kl}')
-        return ad + ms + kl
+        return d + ms + kl
+        #return ad + ms + kl
         #return self.avgdice(output['seg_map'], targets)\
         #    + 0.1*F.mse_loss(output['recon'], targets['src'])\
         #    + 0.1*self.kl(output['mu'], output['logvar'], 256)

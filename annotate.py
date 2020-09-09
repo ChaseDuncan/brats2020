@@ -19,7 +19,7 @@ parser.add_argument('--dir', type=str, required=True,
 parser.add_argument('--hier', type=str, default=None,
         help='Path to second model in hierarchy(default: None')
 parser.add_argument('--output_dir', type=str, default=None,
-        help='Path to save annotations to (default: args.model/annotations/')
+        help='Path to save annotations to (default: args.model/annotations/{epoch}/')
 parser.add_argument('--data_dir', type=str,
     default='/shared/mrfil-data/cddunca2/brats2020/MICCAI_BraTS2020_ValidationData',
         help='Path to directory of datasets to annotate (default: Brats 2020)')
@@ -114,23 +114,23 @@ with torch.no_grad():
         output, _ = model(src)
         if args.model == 'CascadeNetLite':
             output = output['biline']
-        x_off = int((240 - dims[0]) / 2)
-        y_off = int((240 - dims[1]) / 2)
-        z_off = int((155 - dims[2]) / 2)
-        m = nn.ConstantPad3d((z_off+1, z_off, y_off, y_off, x_off, x_off), 0)
-
+        x_off = (240 - dims[0]) // 2
+        y_off = (240 - dims[1]) // 2
+        z_off = (156 - dims[2]) // 2
+        m = nn.ConstantPad3d((z_off, z_off-1, y_off, y_off, x_off, x_off), 0)
         et = m(output[0, 0, :, :, :])
         wt = m(output[0, 1, :, :, :])
         tc = m(output[0, 2, :, :, :])
-
+        print(et.size())
         label = torch.zeros((240, 240, 155), dtype=torch.short)
         label[torch.where(wt > args.wt)] = 2
         label[torch.where(tc > args.tc)] = 1
         label[torch.where(et > args.et)] = 4
-         
+
         unc_enhance = (100*(torch.ones(et.size()).to(device) - et)).type(torch.CharTensor)
         unc_whole = (100*(torch.ones(wt.size()).to(device) - wt)).type(torch.CharTensor)
         unc_core = (100*(torch.ones(tc.size()).to(device) - tc)).type(torch.CharTensor)
+
         '''
         The participants are called to upload 4 nifti (.nii.gz) volumes (3 
         uncertainty maps and 1 multi-class segmentation volume from Task 1) 
@@ -142,10 +142,6 @@ with torch.no_grad():
         3. {ID}_unc_core.nii.gz (Uncertainty map associated with tumor core)
         4. {ID}_unc_enhance.nii.gz (Uncertainty map associated with enhancing tumor)
         '''
-        #label[torch.where(wt > 0.25)] = 2
-        #label[torch.where(tc > 0.25)] = 1
-        #label[torch.where(et > 0.25)] = 4
-
         orig_header = nib.load(d['file'][0][0]).header
         aff = orig_header.get_qform()
         patient = d["patient"][0]

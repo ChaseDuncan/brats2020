@@ -118,11 +118,12 @@ class VAE(nn.Module):
 
   def encode(self, x):
     x1 = self.feats(x)
+    #print(x1.size())
     x1 = x1.view(-1)
     x2 = self.linear(x1)
     mu = x2[:128]
     logvar = x2[-128:]
-    print(f'max(logvar): {torch.max(logvar)}')
+    #print(f'max(logvar): {torch.max(logvar)}')
     return mu, logvar
 
   def reparameterize(self, mu, logvar):
@@ -244,9 +245,10 @@ class Decoder(nn.Module):
       sp1 = sp1 + self.up1(self.cf3(sp2))
 
     sp1 = self.block11(sp1)
-    output = self.sig(self.cf_final(sp1))
+    logits = self.cf_final(sp1)
+    output = self.sig(logits)
 
-    return output
+    return output, logits
 
 
 class VAEReg(nn.Module):
@@ -258,12 +260,12 @@ class VAEReg(nn.Module):
 
   def forward(self, x):
     enc_out = self.encoder(x)
-    seg_map = self.decoder(enc_out)
+    seg_map, logits = self.decoder(enc_out)
     recon, mu, logvar = self.vae(enc_out[0])
     return {'seg_map':seg_map, 
             'recon':recon,
             'mu':mu, 
-            'logvar':logvar}
+            'logvar':logvar}, logits
 
 class ReconReg(nn.Module):
   def __init__(self):

@@ -18,8 +18,7 @@ import torch.utils.data.sampler as sampler
 from tqdm import tqdm
 from models import (
         models,
-        cascade_net,
-        vaereg
+        cascade_net
         )
 #from apex import amp
 from apex_dummy import amp
@@ -288,11 +287,11 @@ def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
                 cur_loss = loss(preds, logits, {'target':target, 'src':src})
             else:
                 cur_loss = loss(preds, {'target':target, 'src':src})
-            if isinstance(model, models.MonoUNet): 
+            if isinstance(model, models.MonoUNet): #or isinstance(model, models.MultiResUNet): 
                 dice_total += dice_score(preds, target)
 
             loss_total+=cur_loss
-            if isinstance(model, vaereg.VAEReg):
+            if isinstance(model, models.VAEReg):
                 dice_total += dice_score(preds['seg_map'], target)
 
             ####### 
@@ -309,7 +308,6 @@ def validate(model, loss, dataloader, device, cascade_train=False, debug=False):
 
         avg_dice = dice_total / examples_total
         avg_loss = loss_total / len(dataloader)
-        print(f'avg_dice: {avg_dice}') 
     return {'dice':avg_dice, 
             'loss':avg_loss
             }

@@ -14,7 +14,6 @@ import pickle
 import argparse
 import random
 from models.cascade_net import CascadeNet
-from models.vaereg import VAEReg
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
@@ -197,9 +196,17 @@ if args.model == 'CascadeNetLite':
     model = CascadeNet(lite=True)
     loss = losses.CascadeAvgDiceLoss(coarse_wt_only=args.coarse_wt_only)
 
+if args.model == 'MultiResUNet':
+    model = MultiResUNet()
+    loss = losses.AvgDiceLoss()
+
+if args.model == 'MultiResVAEReg':
+    model = MultiResVAEReg()
+    loss = losses.VAEDiceLoss(device)
+
 if args.model == 'VAEReg':
     model = VAEReg()
-    loss = losses.VAEDiceLoss()
+    loss = losses.VAEDiceLoss(device)
 
 if args.nesterov:
     optimizer = \

@@ -79,32 +79,34 @@ unc_dir = f'{annotations_dir}/unc/'
 os.makedirs(seg_dir, exist_ok=True)
 os.makedirs(unc_dir, exist_ok=True)
 
-if args.model == 'MonoUNet':
+if args.model.lower() == 'monounet':
     if args.enhance_feat:
         model = MonoUNet(input_channels=5)
     else:
         model = MonoUNet()
+if args.model.lower() == 'vaereg':
+    model = VAEReg()
 
-    checkpoint = torch.load(checkpoint_file, map_location=device)
-    model.load_state_dict(checkpoint['state_dict'], strict=False)
-    model = model.to(device)
+checkpoint = torch.load(checkpoint_file, map_location=device)
+model.load_state_dict(checkpoint['state_dict'], strict=False)
+model = model.to(device)
 
-if args.model.lower() == 'average':
-    model = MonoUNet()
-    model = model_average(args.dir, model, device, sample_proportion=0.50, sample_rate=0.5)
-    model = model.to(device)
-    #brats_train_data = BraTSTrainDataset('/dev/shm/MICCAI_BraTS2020_TrainingData/', 
-    #        dims=dims, enhance_feat=args.enhance_feat)
-    #train_dataloader = DataLoader(brats_train_data)
-    #model = gn_update(train_dataloader, model, device)
+#if args.model.lower() == 'average':
+#    model = MonoUNet()
+#    model = model_average(args.dir, model, device, sample_proportion=0.50, sample_rate=0.5)
+#    model = model.to(device)
+#    #brats_train_data = BraTSTrainDataset('/dev/shm/MICCAI_BraTS2020_TrainingData/', 
+#    #        dims=dims, enhance_feat=args.enhance_feat)
+#    #train_dataloader = DataLoader(brats_train_data)
+#    #model = gn_update(train_dataloader, model, device)
 
-if args.model == 'CascadeNetLite':
-    model = CascadeNet(lite=True)
-    model.to(device)
-
-if args.hier:
-    model = HierarchicalNet(checkpoint_file, args.hier, device)
-    model.to(device)
+#if args.model == 'CascadeNetLite':
+#    model = CascadeNet(lite=True)
+#    model.to(device)
+#
+#if args.hier:
+#    model = HierarchicalNet(checkpoint_file, args.hier, device)
+#    model.to(device)
 
 #print('don\'t forget to change the thresholds back.')
 with torch.no_grad():
@@ -114,6 +116,8 @@ with torch.no_grad():
         output, _ = model(src)
         if args.model == 'CascadeNetLite':
             output = output['biline']
+        if isinstance(model, VAEReg):
+            output = output['seg_map']
         x_off = (240 - dims[0]) // 2
         y_off = (240 - dims[1]) // 2
         z_off = (156 - dims[2]) // 2
@@ -121,7 +125,6 @@ with torch.no_grad():
         et = m(output[0, 0, :, :, :])
         wt = m(output[0, 1, :, :, :])
         tc = m(output[0, 2, :, :, :])
-        print(et.size())
         label = torch.zeros((240, 240, 155), dtype=torch.short)
         label[torch.where(wt > args.wt)] = 2
         label[torch.where(tc > args.tc)] = 1

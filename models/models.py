@@ -5,7 +5,7 @@ from .model_utils import *
 from .cascade_net import DeconvDecoder
 
 class SimpleResNetBlock(nn.Module):
-    def __init__(self, channels, num_groups=32):
+    def __init__(self, channels, num_groups=8):
         super(SimpleResNetBlock, self).__init__()
         self.feats = nn.Sequential(nn.GroupNorm(num_groups, channels),
             nn.ReLU(inplace=True),
@@ -66,7 +66,8 @@ class Encoder(nn.Module):
                 'spatial_level_2':sp2, 'spatial_level_1':sp1
                 }
 
-
+# Decoder with extra blocks whioh aren't used. If the model doesn't match
+# the parameters probably this needs to be used.
 class Decoder(nn.Module):
     def __init__(self, output_channels=3, instance_norm=False):
         super(Decoder, self).__init__()
@@ -97,6 +98,30 @@ class Decoder(nn.Module):
         logits = self.cf_final(sp1)
         return self.sig(logits), logits
      
+#class Decoder(nn.Module):
+#    def __init__(self, output_channels=3, instance_norm=False):
+#        super(Decoder, self).__init__()
+#        self.cf1 = CompressFeatures(256, 128)
+#        self.block9 = ResNetBlock(128, instance_norm=instance_norm) 
+#        self.cf2 = CompressFeatures(128, 64)
+#        self.block10 = ResNetBlock(64, instance_norm=instance_norm) 
+#        self.cf3 = CompressFeatures(64, 32)
+#        self.block11 = ResNetBlock(32, instance_norm=instance_norm)
+#        self.cf_final = CompressFeatures(32, output_channels)
+#        self.up = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
+#        #self.up = nn.Upsample(scale_factor=2, mode='nearest')
+#        self.sig = nn.Sigmoid()
+#
+#    def forward(self, x):
+#        sp3 = x['spatial_level_3'] + self.up(self.cf1(x['spatial_level_4']))
+#        sp3 = self.block9(sp3)
+#        sp2 = x['spatial_level_2'] + self.up(self.cf2(sp3))
+#        sp2 = self.block10(sp2)
+#        sp1 = x['spatial_level_1'] + self.up(self.cf3(sp2))
+#        sp1 = self.block11(sp1)
+#        logits = self.cf_final(sp1)
+#        return self.sig(logits), logits
+
 
 class MonoUNet(nn.Module):
     def __init__(self, input_channels=4, upsampling='bilinear', instance_norm=False):
@@ -130,4 +155,113 @@ class HierarchicalNet(nn.Module):
         output2[:, 1, :, :, :] = output[:, 1, :, :, :]
         output = output2
         return output, None
+
+
+class VAE(nn.Module):
+  def __init__(self):
+    super(VAE, self).__init__()
+    ## Encode
+    self.feats = nn.Sequential(nn.GroupNorm(8, 256),
+        nn.ReLU(inplace=True),
+        nn.Conv3d(256, 16, kernel_size=3, stride=2, padding=1))
+    self.shape1 = [16, 8, 8, 8]
+    #self.shape1 = [16, 10, 12, 8]
+    self.linear = nn.Linear(self.shape1[0] * self.shape1[1] * self.shape1[2] * self.shape1[3], 256)
+
+    ## Decode
+    self.shape = [128, 8, 8, 8]
+    #self.shape = [128, 10, 12, 8]
+    self.linear2 = nn.Linear(128, self.shape[0] * self.shape[1] * self.shape[2] * self.shape[3])
+
+    #self.vu = nn.Sequential(nn.ReLU(inplace=True),
+    #    CompressFeatures(128, 128),
+    #    UpsamplingDeconv3d(128, 128))
+    self.vu = nn.Sequential(nn.ReLU(inplace=True),
+        CompressFeatures(128, 128))
+
+    self.cf1 = CompressFeatures(128, 128)
+
+    self.block9 = ResNetBlock(128)
+    self.cf2 = CompressFeatures(128, 64)
+    self.block10 = ResNetBlock(64)
+    self.cf3 = CompressFeatures(64, 32)
+    self.block11 = ResNetBlock(32)
+    output_channels = 4
+    self.cf_final = CompressFeatures(32, output_channels)
+
+    self.up = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
+    #self.up1 = UpsamplingDeconv3d(32, 32)
+    #self.up2 = UpsamplingDeconv3d(64, 64)
+    #self.up3 = UpsamplingDeconv3d(128, 128)
+
+  def encode(self, x):
+    x1 = self.feats(x)
+    #print(x1.size())
+    x1 = x1.view(-1)
+    x2 = self.linear(x1)
+    mu = x2[:128]
+    logvar = x2[-128:]
+    #print(f'max(logvar): {torch.max(logvar)}')
+    return mu, logvar
+
+  def reparameterize(self, mu, logvar):
+    std = logvar.mul(0.5).exp_()
+    eps = torch.randn_like(std)
+    return mu + eps * logvar
+
+  def decode(self, z):
+    # VU 256x20x24x16
+    #z_ = self.linear2(z).view(1, self.shape[0], self.shape[1], self.shape[2], self.shape[3])
+    z_ = self.linear2(z).view(1, self.shape[0], self.shape[1], self.shape[2], self.shape[3])
+    vu = self.up(self.vu(z_))
+    # VUp2
+    #sp3 = self.up3(self.cf1(vu))
+    sp3 = self.up(self.cf1(vu))
+    # VBlock2 128x40x48x32
+    sp3 = self.block9(sp3)
+
+    # VUp1
+    #sp2 =self.up2(self.cf2(sp3))
+    sp2 =self.up(self.cf2(sp3))
+    # VBlock1 64x80x96x64
+    sp2 = self.block10(sp2)
+
+    # VUp0
+    #sp1 = self.up1(self.cf3(sp2))
+    sp1 = self.up(self.cf3(sp2))
+    
+    # VBlock0 32x160x192x128
+    sp1 = self.block11(sp1)
+    output = self.cf_final(sp1)
+    return output
+
+  def forward(self, x):
+    mu, logvar = self.encode(x)
+    z = self.reparameterize(mu, logvar)
+    return self.decode(z), mu, logvar
+
+
+class VAEReg(nn.Module):
+  def __init__(self):
+    super(VAEReg, self).__init__()
+    self.encoder = Encoder()
+    self.decoder = Decoder()
+
+    self.vae = VAE()
+
+  def forward(self, x):
+    enc_out = self.encoder(x)
+    seg_map, logits = self.decoder(enc_out)
+    recon, mu, logvar = self.vae(enc_out['spatial_level_4'])
+    return {'seg_map':seg_map, 
+            'recon':recon,
+            'mu':mu, 
+            'logvar':logvar}, logits
+
+
+class MultiResVAEReg(VAEReg):
+    def __init__(self):
+        super(MultiResVAEReg, self).__init__()
+        self.encoder = MultiEncoder()
+        self.decoder = MultiDecoder()
 

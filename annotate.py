@@ -41,14 +41,15 @@ parser.add_argument('-e', '--enhance_feat', action='store_true',
     help='include t1ce/t1 in input and loss.')
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
                         help='model class (default: None)')
-
-# finish this
-#parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
-#        help='Which checkpoint to use if not most recent (default: most recent checkpoint in args.model/checkpoints/)')
-#dims=[240, 240, 144]
-dims=[128, 128, 128]
+parser.add_argument('-F', '--full_patch', action='store_true', 
+        help='use patch size 240x240x144 (default patch size: 128x128x128)')
 
 args = parser.parse_args()
+
+dims=[128, 128, 128]
+if args.full_patch:
+    dims=[240, 240, 144]
+
 
 if args.device >= 0:
     device = torch.device(f'cuda:{args.device}')

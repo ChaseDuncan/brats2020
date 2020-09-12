@@ -44,11 +44,8 @@ parser.add_argument('--tc', type=float, default=0.5, metavar='p',
 #                        help='model class (default: None)')
 
 args = parser.parse_args()
-# finish this
-#parser.add_argument('-c', '--checkpoint', type=int, default=None, metavar='N',
-#        help='Which checkpoint to use if not most recent (default: most recent checkpoint in args.model/checkpoints/)')
-#dims=[240, 240, 144]
-dims=[128, 128, 128]
+dims=[240, 240, 144]
+#dims=[128, 128, 128]
 
 
 if args.device >= 0:
@@ -59,17 +56,18 @@ else:
 brats_data = BraTSAnnotationDataset(args.data_dir, dims=dims)
 dataloader = DataLoader(brats_data)
 
-models = ['5', '6', '7', '8', '10', '11', '12', '13', '14']
-#models = ['5']
+#models = ['80', '290', '110', '142', '42', '242' ]
+models = ['80', '290', '110', '142', '42', '242', '100', '85', '70', '123', '234']
+#models = ['80', '110',]
 model_paths = []
-for model in models:
-    for p, _, files in os.walk(f'{args.dir}/{model}/checkpoints/'):
-        checkpoint_file = os.path.join(p, files[-1])
-        ep = ''.join([s for s in checkpoint_file if s.isdigit()])
+for p, _, files in os.walk(f'{args.dir}/checkpoints/'):
+    checkpoint_file = os.path.join(p, files[-1])
+    for f in files:
+        ep = ''.join([s for s in f if s.isdigit()])
+        if ep in models:
+            model_paths.append(os.path.join(p, f))
 
-        model_paths.append(os.path.join(p, f'{checkpoint_file}'))
-
-annotations_dir = f'{args.dir}/annotations/'
+annotations_dir = f'{args.dir}/annotations/ensemble/'
 
 seg_dir = f'{annotations_dir}/seg/'
 unc_dir = f'{annotations_dir}/unc/'
@@ -94,12 +92,14 @@ for j, model_path in enumerate(model_paths):
                 ensemble_preds[d["patient"][0]] = torch.zeros(output.size())
             ens_pred = ensemble_preds[d["patient"][0]].to(device)
             ens_pred = ( j / ( j + 1))*ens_pred + ( 1 / ( j + 1))*output
-            ensemble_preds[d["patient"][0]] = ens_pred.to(device)
+
+            ensemble_preds[d["patient"][0]] = ens_pred.cpu()
+
 
 print('performing averaging and output.')
 for d in tqdm(dataloader):
-    ens_pred = ensemble_preds[d["patient"][0]]
-    ens_pred = ens_pred / len(ensemble_preds)
+    ens_pred = ensemble_preds[d["patient"][0]].to(device)
+    #ens_pred = ens_pred / len(ensemble_preds)
     x_off = int((240 - dims[0]) / 2)
     y_off = int((240 - dims[1]) / 2)
     z_off = int((155 - dims[2]) / 2)

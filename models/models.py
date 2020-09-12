@@ -4,26 +4,6 @@ import torch.nn as nn
 from .model_utils import *
 from .cascade_net import DeconvDecoder
 
-class SimpleResNetBlock(nn.Module):
-    def __init__(self, channels, num_groups=8):
-        super(SimpleResNetBlock, self).__init__()
-        self.feats = nn.Sequential(nn.GroupNorm(num_groups, channels),
-            nn.ReLU(inplace=True),
-            nn.Dropout3d(),
-            nn.Conv3d(channels, channels, 
-                kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups, channels),
-            nn.ReLU(inplace=True),
-            nn.Dropout3d(),
-            nn.Conv3d(channels, channels, 
-                kernel_size=3, stride=1, padding=1))
-
-    def forward(self, x):
-        residual = x
-        out = self.feats(x)
-        out += residual
-        return out
-
 
 class Encoder(nn.Module):
     def __init__(self, input_channels=4, instance_norm=False):
@@ -86,10 +66,14 @@ class Decoder(nn.Module):
         self.sig = nn.Sigmoid()
 
     def forward(self, x):
+        #print(x['spatial_level_4'].size(),x['spatial_level_3'].size())
         sp3 = x['spatial_level_3'] + self.up(self.cf1(x['spatial_level_4']))
+
+        #print(x['spatial_level_3'].size(),x['spatial_level_2'].size())
         sp3 = self.block9(sp3)
         #sp3 = self.block10(sp3)
         sp2 = x['spatial_level_2'] + self.up(self.cf2(sp3))
+
         sp2 = self.block11(sp2)
         #sp2 = self.block12(sp2)
         sp1 = x['spatial_level_1'] + self.up(self.cf3(sp2))

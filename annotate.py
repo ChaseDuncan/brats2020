@@ -43,6 +43,10 @@ parser.add_argument('--model', type=str, default=None, required=True, metavar='M
                         help='model class (default: None)')
 parser.add_argument('-F', '--full_patch', action='store_true', 
         help='use patch size 240x240x144 (default patch size: 128x128x128)')
+parser.add_argument('-L', '--large_patch', action='store_true', 
+        help='use patch size 160x192x128 (default patch size: 128x128x128)')
+parser.add_argument('-X', '--xlarge_patch', action='store_true', 
+        help='use patch size 192x192x128 (default patch size: 128x128x128)')
 
 args = parser.parse_args()
 
@@ -50,6 +54,10 @@ dims=[128, 128, 128]
 if args.full_patch:
     dims=[240, 240, 144]
 
+if args.large_patch:
+    dims=[160, 192, 128]
+if args.xlarge_patch:
+    dims=[192, 192, 128]
 
 if args.device >= 0:
     device = torch.device(f'cuda:{args.device}')

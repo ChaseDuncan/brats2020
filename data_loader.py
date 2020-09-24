@@ -11,7 +11,6 @@ from abc import abstractmethod
 import random
 from tqdm import tqdm
 
-NoneType = type(None)
 def shuffle_split_dataset(data_dir, split_idx):
     def _proc_split(split):
         modes = [[], [], [], []]
@@ -50,7 +49,6 @@ def shuffle_split_dataset(data_dir, split_idx):
     train_split, val_split = joined_files[:split_idx], joined_files[split_idx:]
     return _proc_split(train_split), _proc_split(val_split)
 
-
 class BraTSDataset(Dataset):
     def __init__(self, data_dir, dims=[240, 240, 155], modes=None, segs=None):
         self.x_off = 0
@@ -76,6 +74,8 @@ class BraTSDataset(Dataset):
         if segs:
             self.segs = segs
 
+
+
     def __len__(self):
         # return size of dataset
         return max([len(self.modes[i]) for i in range(len(self.modes))])
@@ -91,31 +91,30 @@ class BraTSDataset(Dataset):
 
     def _transform_data(self, d, seg_mat=False, shift_and_scale=False):
         img = d.get_fdata()
-        #x, y, z = img.shape
-        #add_x = x % 2 
-        #add_y = y % 2 
-        #add_z = z % 2 
-        #npad = ((0, add_x),
-        #        (0, add_y),
-        #        (0, add_z))
+        x, y, z = img.shape
+        add_x = x % 2 
+        add_y = y % 2 
+        add_z = z % 2 
+        npad = ((0, add_x),
+                (0, add_y),
+                (0, add_z))
 
-        #img = np.pad(img, 
-        #        pad_width=npad, 
-        #        mode='constant', 
-        #        constant_values=0)
+        img = np.pad(img, 
+                pad_width=npad, 
+                mode='constant', 
+                constant_values=0)
 
-        ##img = np.zeros(img.shape)
-        ##img[120, 120, 50] = 1
-        ##print(np.where(img > 0))
-        #self.x_off = (img.shape[0] - self.dims[0]) // 2
-        #self.y_off = (img.shape[1] - self.dims[1]) // 2
-        #self.z_off = (img.shape[2] - self.dims[2]) // 2
+        #img = np.zeros(img.shape)
+        #img[120, 120, 50] = 1
+        #print(np.where(img > 0))
 
-        #img = img[self.x_off:img.shape[0]-self.x_off,
-        #      self.y_off:img.shape[1]-self.y_off,
-        #      self.z_off:img.shape[2]-self.z_off]
+        self.x_off = (img.shape[0] - self.dims[0]) // 2
+        self.y_off = (img.shape[1] - self.dims[1]) // 2
+        self.z_off = (img.shape[2] - self.dims[2]) // 2
 
-        #print(f'x: {x}\ty: {y}\tz: {z}\t add_x: {add_x}\t add_y: {add_y}\t img.shape: {img.shape}')
+        img = img[self.x_off:img.shape[0]-self.x_off,
+              self.y_off:img.shape[1]-self.y_off,
+              self.z_off:img.shape[2]-self.z_off]
         #dims = self.dims
 
         #x_off = int((240 - dims[0]) / 2)
@@ -153,13 +152,7 @@ class BraTSDataset(Dataset):
         std = d[brain_mask].std()
         # now normalize each modality with its mean and standard deviation (computed within the brain mask)
         stan = (d - mean) / (std + 1e-8)
-
-        if self.augment_data:
-            if isinstance(self.shft, NoneType):
-                self.shft = np.random.uniform(-0.1, 0.1, d.shape)
-            if isinstance(self.scal, NoneType):
-                self.scal = np.random.uniform(0.9, 1.1, d.shape)
-
+        if shift_and_scale:
             stan = stan + self.shft
             stan = stan*self.scal 
 
@@ -170,76 +163,7 @@ class BraTSDataset(Dataset):
     def __getitem__(self, idx):
         pass
 
-def crop_seg(seg, nonzero):
-    #seg = seg[
-    #           nonzero[0, 0]: nonzero[0, 1] + 1,
-    #           nonzero[1, 0]: nonzero[1, 1] + 1,
-    #           nonzero[2, 0]: nonzero[2, 1] + 1,
-    #           ]
-
-    seg = seg[
-               nonzero[0, 0]: nonzero[0, 1],
-               nonzero[1, 0]: nonzero[1, 1],
-               nonzero[2, 0]: nonzero[2, 1],
-               ]
-    return seg 
-
-def crop_to_nonzero(imgs_npy, targets):
-    imgs_npy = np.concatenate([imgs_npy, targets])
-    # now find the nonzero region and crop to that
-    nonzero = [np.array(np.where(i != 0)) for i in imgs_npy[:-3]]
-    try:
-        nonzero = [[np.min(i, 1), np.max(i, 1)] for i in nonzero]
-    except:
-        import pdb; pdb.set_trace()
-    nonzero = np.array([np.min([i[0] for i in nonzero], 0), np.max([i[1] for i in nonzero], 0)]).T
-    # nonzero now has shape 3, 2. It contains the (min, max) coordinate of nonzero voxels for each axis
-    
-    # need each dimension to be divisible by 2
-    #add_x = 4 - (nonzero[0, 1] - nonzero[0, 0]) % 4 
-    #add_y = 4 - (nonzero[1, 1] - nonzero[1, 0]) % 4
-    #add_z = 4 - (nonzero[2, 1] - nonzero[2, 0]) % 4 
-    #add_x = (nonzero[0, 1] - nonzero[0, 0]) % 8 
-    #add_y = (nonzero[1, 1] - nonzero[1, 0]) % 8
-    #add_z = (nonzero[2, 1] - nonzero[2, 0]) % 8 
-
-    #print(imgs_npy[0].shape)
-    #print(nonzero)
-    #nonzero[0, 1] += add_x
-    #nonzero[1, 1] += add_y
-    #nonzero[2, 1] += add_z
-    #print(nonzero)
-    # now crop to nonzero
-    imgs_npy = imgs_npy[:,
-               nonzero[0, 0] : nonzero[0, 1],
-               nonzero[1, 0]: nonzero[1, 1],
-               nonzero[2, 0]: nonzero[2, 1],
-               ]
-    #print(imgs_npy[0].shape)
-    return imgs_npy
-
-def pad(image, npad):
-    image = np.pad(image, 
-       pad_width=npad, 
-       mode='constant', 
-       constant_values=0)
-
-    return image
-
-def pad_mat(images):
-        img = images[0]
-        #print(f'img.shape {img.shape}')
-        x, y, z = img.shape
-        add_x = 8 - x % 8 
-        add_y = 8 - y % 8 
-        add_z = 8 - z % 8 
-        npad = ((0, add_x),
-                (0, add_y),
-                (0, add_z))
-        images = [pad(image, npad) for image in images]
-        #print([image.shape for image in images])
-        return np.array(images[:4]), np.array(images[4:])
-
+        
 class BraTSTrainDataset(BraTSDataset):
     def __init__(self, data_dir, 
         dims=[240, 240, 155], 
@@ -298,16 +222,20 @@ class BraTSTrainDataset(BraTSDataset):
 
     def __getitem__(self, idx):
         # mirror sample? if so which dimension
-        self.shft = None
-        self.scal = None
+        shift_and_scale=False
+        if self.augment_data:
+            self.shft = np.random.uniform(-0.1, 0.1, self.dims)
+            self.scal = np.random.uniform(0.9, 1.1, self.dims)
+            shift_and_scale = True
+
         if np.random.uniform() > 0.5: 
             self.mirror = True
             self.axis = np.random.choice([0, 1, 2], 1)[0]
 
         # header data should be handled in preprocessing, not here
         images, header = self._load_images(idx) 
-        images = [self._transform_data(image) for image in images]  
-        images = np.stack(images)
+        images = [self._transform_data(image, shift_and_scale=shift_and_scale) for image in images]  
+        images = torch.from_numpy(np.stack(images))
         
         if self.enhance_feat:
             # t1 idx: 0 t1ce idx: 1
@@ -317,14 +245,14 @@ class BraTSTrainDataset(BraTSDataset):
         target = []
         # get this out of here
         if self.segs:
-            seg = nib.load(self.segs[idx]).get_fdata()
+            seg = nib.load(self.segs[idx])
+            seg = self._transform_data(seg, seg_mat=True)
             segs = []
 
             if self.clinical_segs:
                 # enhancing tumor
                 seg_et = np.zeros(seg.shape)
                 seg_et[np.where(seg==4)] = 1
-
                 segs.append(seg_et)
 
                 # whole tumor
@@ -337,7 +265,7 @@ class BraTSTrainDataset(BraTSDataset):
                 seg_tc[np.where(seg==1) or np.where(seg==4)] = 1
                 segs.append(seg_tc)
 
-                target = np.stack(segs)
+                target = torch.from_numpy(np.stack(segs))
             else:
                 # necrotic/non-enhancing tumor
                 seg_ncr_net = np.zeros(seg.shape)
@@ -353,12 +281,9 @@ class BraTSTrainDataset(BraTSDataset):
                 seg_et = np.zeros(seg.shape)
                 seg_et[np.where(seg==4)] = 1
                 segs.append(seg_et)
-                target = np.stack(segs)
+                target = torch.from_numpy(np.stack(segs))
 
-        images, target= pad_mat(crop_to_nonzero(images, target))
-
-        #print(images.shape, target.shape)
-        return torch.from_numpy(images), torch.from_numpy(target)
+        return images, target
 
 
 class BraTSSelfTrainDataset(BraTSTrainDataset):

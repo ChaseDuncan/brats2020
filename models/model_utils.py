@@ -272,3 +272,22 @@ class ResNetBlock(nn.Module):
         return out
 
 
+# TODO
+#class MultiResNetBlock(nn.Module):
+#    def __init__(self, channels, num_groups=8):
+#        super(MultiResNetBlock, self).__init__()
+#
+#            self.act = nn.ReLU(inplace=True),
+#            self.gn1 = nn.GroupNorm(num_groups, channels),
+#            self.cn1 = nn.Conv3d(channels, channels, kernel_size=3, stride=1, padding=1),
+#                nn.GroupNorm(num_groups, channels),
+#                nn.ReLU(inplace=True),
+#                nn.Conv3d(channels, channels, 
+#                    kernel_size=3, stride=1, padding=1))
+#
+#    def forward(self, x):
+#        residual = x
+#        out = self.feats(x)
+#        out += residual
+#        return out
+

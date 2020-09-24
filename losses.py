@@ -19,8 +19,8 @@ class KLLoss(nn.Module):
     def __init__(self):
         super(KLLoss, self).__init__()
     
-    def forward(self, mu, logvar):
-        return -0.5*torch.mean(torch.ones(mu.size()).cuda()+logvar-torch.exp(logvar)-torch.square(mu))
+    def forward(self, mu, logvar, device):
+        return -0.5*torch.mean(torch.ones(mu.size()).to(device)+logvar-torch.exp(logvar)-torch.square(mu))
     #def forward(self, mu, logvar, N):
     #    sum_square_mean = torch.einsum('i,i->', mu, mu)
     #    sum_log_var = torch.einsum('i->', logvar)
@@ -30,17 +30,18 @@ class KLLoss(nn.Module):
 
 
 class VAEDiceLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(VAEDiceLoss, self).__init__()
         self.avgdice = AvgDiceLoss()
         self.kl = KLLoss()
+        self.device = device
 
     def forward(self, output, targets):
         #ad = 0.8*self.avgdice(output['seg_map'], targets)
         target = targets['target']
         d = -torch.einsum('c->', dice_score(output['seg_map'], target))
-        ms = 0.1*F.mse_loss(output['recon'], targets['src'])
-        kl = 0.1*self.kl(output['mu'], output['logvar'])
+        ms = 0.1*F.mse_loss(output['recon'], targets['src'], reduction='sum')
+        kl = 0.1*self.kl(output['mu'], output['logvar'], self.device)
 
         return d + ms + kl
         #return ad + ms + kl

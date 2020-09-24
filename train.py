@@ -14,7 +14,6 @@ import pickle
 import argparse
 import random
 from models.cascade_net import CascadeNet
-from models.vaereg import VAEReg
 from torch.utils.data import DataLoader
 from scheduler import PolynomialLR
 import losses
@@ -83,6 +82,8 @@ parser.add_argument('-b', '--debug', action='store_true',
 
 parser.add_argument('-L', '--large_patch', action='store_true', 
         help='use patch size 160x192x128 (default patch size: 128x128x128)')
+parser.add_argument('-X', '--xlarge_patch', action='store_true', 
+        help='use patch size 192x192x128 (default patch size: 128x128x128)')
 
 parser.add_argument('-F', '--full_patch', action='store_true', 
         help='use patch size 240x240x144 (default patch size: 128x128x128)')
@@ -170,7 +171,8 @@ with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
 dims=[128, 128, 128]
 if args.large_patch:
     dims=[160, 192, 128]
-
+if args.xlarge_patch:
+    dims=[192, 192, 128]
 if args.full_patch:
     dims=[240, 240, 144]
 
@@ -197,9 +199,17 @@ if args.model == 'CascadeNetLite':
     model = CascadeNet(lite=True)
     loss = losses.CascadeAvgDiceLoss(coarse_wt_only=args.coarse_wt_only)
 
+if args.model == 'MultiResUNet':
+    model = MultiResUNet()
+    loss = losses.AvgDiceLoss()
+
+if args.model == 'MultiResVAEReg':
+    model = MultiResVAEReg()
+    loss = losses.VAEDiceLoss(device)
+
 if args.model == 'VAEReg':
     model = VAEReg()
-    loss = losses.VAEDiceLoss()
+    loss = losses.VAEDiceLoss(device)
 
 if args.nesterov:
     optimizer = \
@@ -222,6 +232,29 @@ if args.pretrain:
     print(f'Begin training from pretrained model {args.pretrain}')
     checkpoint = torch.load(args.pretrain)
     model.load_state_dict(checkpoint["state_dict"])
+
+collate_fn=None
+#def collate_fn(batch):
+#    bc = bx = by = bz = 0
+#    for d in batch:
+#        dc, dx, dy, dz = d[0].shape
+#        bc = max(bc, dc)
+#        bx = max(bx, dx)
+#        by = max(by, dy)
+#        bz = max(bz, dz)
+#    big_d = (bc, bx, by, bz)
+#    batch_x = []
+#    batch_y = []
+#    for d in batch:
+#        pad = torch.zeros(big_d)
+#        x_shape = d[0].shape
+#        pad[:x_shape[0], :x_shape[1], :x_shape[2], :x_shape[3]] = d[0]
+#        y_pad = torch.zeros((3, *big_d[1:]))
+#        y_shape = d[1].shape
+#        y_pad[:y_shape[0], :y_shape[1], :y_shape[2], :y_shape[3]] = d[1]
+#        batch_x.append(pad)
+#        batch_y.append(y_pad)
+#    return torch.stack(batch_x), torch.stack(batch_y)
 
 
 if args.cross_val:
@@ -265,7 +298,7 @@ if args.cross_val:
 elif args.selftrain:
     train_data = BraTSSelfTrainDataset(args.data_dir, model, device, n=args.selftrain_n, dims=dims,   
             augment_data=args.augment_data)
-    trainloader = DataLoader(train_data, batch_size=args.batch_size,
+    trainloader = DataLoader(train_data, batch_size=args.batch_size,  
                             shuffle=True, num_workers=args.num_workers)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=False, augment_data=False)
     valloader = DataLoader(val_data, batch_size=args.batch_size, 
@@ -274,10 +307,10 @@ else:
     # train without cross_val or self-training
     train_data = BraTSTrainDataset(args.data_dir, dims=dims, 
             augment_data=args.augment_data, enhance_feat=args.enhance_feat, throw_no_et_sets=args.throw_no_et_sets)
-    trainloader = DataLoader(train_data, batch_size=args.batch_size, 
+    trainloader = DataLoader(train_data, batch_size=args.batch_size, collate_fn=collate_fn,
                             shuffle=True, num_workers=args.num_workers)
     val_data = BraTSTrainDataset(args.data_dir, dims=dims, enhance_feat=args.enhance_feat, augment_data=False)
-    valloader = DataLoader(val_data, batch_size=args.batch_size, 
+    valloader = DataLoader(val_data, batch_size=args.batch_size, collate_fn=collate_fn,
                             shuffle=True, num_workers=args.num_workers)
 
 writer = SummaryWriter(log_dir=f'{args.dir}/logs')

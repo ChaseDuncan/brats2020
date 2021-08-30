@@ -234,13 +234,6 @@ def train(model, loss, optimizer, train_dataloader, device, cascade_train=False,
         except:
             print(f'clr is {clr} but scheduler is {scheduler}. please pass valid arguments.')
 
-    p_bef   = [(name, p.data.clone().detach()) for name, p in model.named_parameters()]
-    p_aft   = [p for p in model.named_parameters()]
-
-    print(f'p_bef: {p_bef[0][1][0][0]}')
-    print(f'p_aft: {p_aft[0][1][0][0]}')
-    print(list(model.parameters())[0].grad)
-    1/0
     for src, target in tqdm(train_dataloader):
         optimizer.zero_grad()
         src, target = src.to(device, dtype=torch.float),\
@@ -257,16 +250,6 @@ def train(model, loss, optimizer, train_dataloader, device, cascade_train=False,
         #print(f'total_loss {total_loss}')
         cur_loss.backward()
         optimizer.step()
-
-        p_aft = [p for p in model.named_parameters()]
-        print(f'p_bef after opt.step: {p_bef[0][1][0][0]}')
-        print(f'p_aft after opt.step: {p_aft[0][1][0][0]}')
-
-        p_bef[0][1][0][0][0][0] = 12345
-        print(f'sanity p_bef: {p_bef[0][1][0][0]}')
-        print(f'sanity p_aft: {p_aft[0][1][0][0]}')
-        sys.exit()
-
         if clr:
             try:
                 scheduler.step()

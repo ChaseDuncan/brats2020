@@ -156,10 +156,13 @@ else:
 os.makedirs(f'{args.dir}/logs', exist_ok=True)
 os.makedirs(f'{args.dir}/checkpoints', exist_ok=True)
 print(f'seed: {args.seed}')
+torch.manual_seed(args.seed)
+torch.cuda.manual_seed(args.seed)
 np.random.seed(args.seed)
 random.seed(args.seed)
 torch.manual_seed(args.seed)
-torch.cuda.manual_seed(args.seed)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
 
 with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
   f.write(' '.join(sys.argv))

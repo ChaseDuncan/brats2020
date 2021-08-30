@@ -66,7 +66,7 @@ class BraTSDataset(Dataset):
                       sorted([ f for f in filenames if "t2.nii.gz" in f ]),
                       sorted([ f for f in filenames if "flair.nii.gz" in f ])
             ]
-
+        print(self.modes)
         self.segs = sorted([ f for f in filenames if "seg.nii.gz" in f ])
 
         if modes:
@@ -182,26 +182,6 @@ class BraTSTrainDataset(BraTSDataset):
         
         self.shft = None
         self.scal = None
-
-        if throw_no_et_sets:
-            print('Removing datasets with no enhancing tumor.')
-            segs_temp = []
-            mode_temp = [[],[],[],[]]
-            kicked = 0
-            for seg, m1, m2, m3, m4 in zip(self.segs, *self.modes):
-                img = nib.load(seg).get_fdata()
-                if len(np.where(img==4)[0]) != 0:
-                    segs_temp.append(seg)
-                    mode_temp[0].append(m1)
-                    mode_temp[1].append(m2)
-                    mode_temp[2].append(m3)
-                    mode_temp[3].append(m4)
-                else:
-                    kicked+=1
-                    
-            print(f'{kicked + 1} datasets removed.')
-            self.segs = segs_temp
-            self.modes = mode_temp
 
     def _load_images(self, idx):
         images = []

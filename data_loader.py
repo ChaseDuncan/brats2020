@@ -66,7 +66,7 @@ class BraTSDataset(Dataset):
                       sorted([ f for f in filenames if "t2.nii.gz" in f ]),
                       sorted([ f for f in filenames if "flair.nii.gz" in f ])
             ]
-        print(self.modes)
+       
         self.segs = sorted([ f for f in filenames if "seg.nii.gz" in f ])
 
         if modes:

@@ -79,9 +79,6 @@ class AvgDiceLoss(nn.Module):
         super(AvgDiceLoss, self).__init__()
     
     def forward(self, preds, targets):
-        # this conditional is used for CascadeNet when only using bilinear upsampling
-        if preds == None:
-            return 0
         target = targets['target']
         proportions = dice_score(preds, target)
         avg_dice = torch.einsum('c->', proportions) / (target.shape[0]*target.shape[1])
